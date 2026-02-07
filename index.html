@@ -254,14 +254,20 @@ document.getElementById("clearBtn").addEventListener("click", ()=> {
 const longCounterDiv = document.getElementById("longCounter");
 let longCounter = Array.from({length:30},()=>Math.floor(Math.random()*10));
 
+// إنشاء مرجع العداد مرة واحدة فقط
+const longCounterRef = ref(db, "temporal/longCounter");
+
+// تحديث العداد في الواجهة وإرساله للخادم كل 100ms
 setInterval(()=>{
   longCounter = longCounter.map(()=>Math.floor(Math.random()*10));
   longCounterDiv.textContent = longCounter.join("");
 
-  set(ref(db, "temporal/longCounter"), {
+  // أرسل نسخة جديدة للخادم
+  push(longCounterRef, {
     value: longCounter.join(""),
     nano: Date.now()
   });
+
 }, 100);
 
 </script>
