@@ -258,7 +258,7 @@ setInterval(()=>{
   longCounter = longCounter.map(()=>Math.floor(Math.random()*10));
   longCounterDiv.textContent = longCounter.join("");
 
-  push(ref(db, "temporal/longCounter"), {
+  set(ref(db, "temporal/longCounter"), {
     value: longCounter.join(""),
     nano: Date.now()
   });
