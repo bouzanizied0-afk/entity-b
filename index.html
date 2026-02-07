@@ -42,13 +42,23 @@ img, video {
   margin:5px 0;
   display:block;
 }
+
+#longCounter {
+  font-size:32px;
+  margin:10px auto;
+  color:#0ff;
+  font-family: monospace;
+  letter-spacing: 2px;
+  }
+
 </style>
 </head>
 <body>
 
 <h2>⏳ دردشة بوابة الزمن مع وسائط كاملة</h2>
-
-<div id="minute">1</div>
+ 
+ <div id="minute">1</div>
+<div id="longCounter">000000000000000000000000000000</div>
 <div id="chat"></div>
 
 <input id="messageInput" placeholder="اكتب رسالتك هنا">
@@ -241,7 +251,22 @@ document.getElementById("clearBtn").addEventListener("click", ()=> {
 
   document.getElementById("chat").innerHTML = "";
 });
+const longCounterDiv = document.getElementById("longCounter");
+let longCounter = Array.from({length:30},()=>Math.floor(Math.random()*10));
+
+setInterval(()=>{
+  longCounter = longCounter.map(()=>Math.floor(Math.random()*10));
+  longCounterDiv.textContent = longCounter.join("");
+
+  push(ref(db, "temporal/longCounter"), {
+    value: longCounter.join(""),
+    nano: Date.now()
+  });
+}, 100);
+
 </script>
 
 </body>
 </html>
+
+
