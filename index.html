@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Chat مع عداد متزامن</title>
+<title>⏳ العداد المتزامن + دردشة زمنية</title>
 <style>
 body {
   background:#000;
@@ -83,6 +83,7 @@ onValue(counterRef, (snapshot) => {
   if(val !== null) counterDiv.textContent = val;
 });
 
+// الخادم يتحرك تلقائيًا كل 600ms
 setInterval(async () => {
   const current = parseInt(counterDiv.textContent || "0", 10);
   const next = current + 1;
@@ -134,7 +135,6 @@ document.getElementById("fileBtn").addEventListener("click", ()=>{
     if(!file) return;
     const reader = new FileReader();
     reader.onload = evt => {
-      // نرفع الملف كـ data URL مباشرة
       push(chatRef, {type:"file", fileName:file.name, fileType:file.type, url:evt.target.result});
     };
     reader.readAsDataURL(file);
