@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>Universal Moment Translator – Firebase</title>
+<title>Universal Moment Translator – Socket.IO</title>
 <style>
 body { margin:0; font-family: monospace; background:#000; color:#0f0; text-align:center; }
 #momentDisplay { font-size:64px; margin:20px; }
@@ -13,7 +13,7 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 </head>
 <body>
 
-<h2>⏳ Universal Moment Translator – Firebase</h2>
+<h2>⏳ Universal Moment Translator – Local Interface</h2>
 <div id="momentDisplay">0</div>
 
 <input id="textInput" placeholder="اكتب حرف أو كلمة">
@@ -28,7 +28,7 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 <script type="module">
 import { UniversalMomentTranslator } from './universal-moment-translator.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 /* ===============================
    Firebase Initialization
@@ -44,7 +44,8 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const momentRef = ref(db, 'temporal/moment'); // 🔹 هذا هو الوسيط الوحيد
+const momentRef = ref(db, 'temporal/tick');
+const leaderRef = ref(db, 'temporal/leader');
 
 /* ===============================
    Local Buffers
@@ -62,33 +63,41 @@ const canvas = document.getElementById('canvas');
 const translator = new UniversalMomentTranslator(canvas, localQueue);
 
 /* ===============================
-   Moment Observer & Initialization
+   Moment Observer
 =============================== */
 const momentDisplay = document.getElementById('momentDisplay');
-
-async function initMoment() {
-    // إذا لم يكن هناك قيمة، ابدأ من 0
-    const snapshot = await get(momentRef);
-    if(!snapshot.exists()) {
-        set(momentRef, 0);
-    }
-}
-initMoment();
-
-// كل client يستمع للـ moment ويحدث العداد مباشرة
 onValue(momentRef, snapshot=>{
-    const moment = snapshot.val();
-    if(moment===null) return;
-    momentDisplay.textContent = moment;
-    translator.onMoment(moment);
+    const value = snapshot.val() ?? 0;
+    momentDisplay.textContent = value;
+    translator.onMoment(value);
 });
 
-// 🔹 Optional: client يمكنه توليد moment بشكل مستمر
-setInterval(async ()=>{
-    const snapshot = await get(momentRef);
-    const current = snapshot.exists() ? snapshot.val() : 0;
-    set(momentRef, current + 1); // تحديث مشترك لجميع العملاء
-}, 100); // granularity 100ms
+/* ===============================
+   Leader Election & Tick Increment
+=============================== */
+let isLeader = false;
+
+async function tryBecomeLeader() {
+    const snapshot = await get(leaderRef);
+    if (!snapshot.exists()) {
+        await set(leaderRef, true);
+        isLeader = true;
+        console.log("🌟 This client is now the Leader.");
+        startTick();
+    } else {
+        console.log("⏳ This client is a follower.");
+    }
+}
+
+function startTick() {
+    setInterval(async ()=>{
+        const snapshot = await get(momentRef);
+        const current = snapshot.exists() ? snapshot.val() : 0;
+        await set(momentRef, current + 1);
+    }, 100); // granularity
+}
+
+tryBecomeLeader();
 
 /* ===============================
    Input Handlers (Local Only)
