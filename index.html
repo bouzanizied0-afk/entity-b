@@ -2,115 +2,60 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Chat</title>
-
+<title>⏳ عداد متزامن بالخادم</title>
 <style>
 body {
   background:#000;
   color:#0f0;
   font-family: monospace;
   text-align:center;
-  padding-top:20px;
+  padding-top:50px;
 }
-#tick {
+#counter {
   font-size:64px;
   margin:20px;
 }
-#chat {
-  width:80%;
-  margin:20px auto;
-  max-height:400px;
-  overflow-y:auto;
-  text-align:left;
-  font-size:20px;
-  border:1px solid #0f0;
-  padding:10px;
-}
-input {
-  width:60%;
-  font-size:18px;
-  padding:6px;
-}
-button {
-  font-size:16px;
-  padding:6px 14px;
-  margin-left:5px;
-}
 </style>
 </head>
-
 <body>
 
-<h2>⏳ الزمن المشترك</h2>
-<div id="tick">...</div>
-
-<div id="chat"></div>
-
-<input id="messageInput" placeholder="اكتب رسالة">
-<button onclick="sendMessage()">إرسال</button>
+<h2>⏳ العداد المتزامن</h2>
+<div id="counter">0</div>
 
 <script type="module">
-/* ================= Firebase ================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import {
-  getDatabase,
-  ref,
-  push,
-  onValue,
-  onChildAdded
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-/* ⚠️ انتبه للاسم: setouchi-it */
+// 🔐 إعداد Firebase (استبدل بالبيانات الخاصة بك إذا لزم)
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "setouchi-it"
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "setouchi-it",
+  storageBucket: "setouchi-it.appspot.com",
+  messagingSenderId: "456612217542",
+  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const counterRef = ref(db, "temporal/counter");
 
-/* ================= CLOCK ================= */
-const tickDiv = document.getElementById("tick");
-const clockRef = ref(db, "system/clock");
+const counterDiv = document.getElementById("counter");
 
-onValue(clockRef, snap => {
-  if (snap.exists()) {
-    tickDiv.textContent = snap.val().tick;
-  } else {
-    tickDiv.textContent = "⛔ لا يوجد زمن";
-  }
+// استقبال القيمة الحالية من الخادم
+onValue(counterRef, (snapshot) => {
+  const val = snapshot.val();
+  if(val !== null) counterDiv.textContent = val;
 });
 
-/* ================= CHAT ================= */
-const chatDiv = document.getElementById("chat");
-const messagesRef = ref(db, "messages");
+// تحديث العداد في الخادم كل 600 مللي ثانية
+setInterval(async () => {
+  const current = parseInt(counterDiv.textContent || "0", 10);
+  const next = current + 1;
+  await set(counterRef, next);
+}, 600);
 
-onChildAdded(messagesRef, snap => {
-  const msg = snap.val();
-  if (!msg || !msg.text) return;
-
-  const div = document.createElement("div");
-  div.textContent = msg.text;
-  chatDiv.appendChild(div);
-  chatDiv.scrollTop = chatDiv.scrollHeight;
-});
-
-/* ================= SEND ================= */
-window.sendMessage = () => {
-  const input = document.getElementById("messageInput");
-  const text = input.value.trim();
-  if (!text) return;
-
-  push(ref(db, "messages"), {
-    text: text,
-    createdAt: Date.now()
-  });
-
-  input.value = "";
-};
 </script>
-
 </body>
 </html>
