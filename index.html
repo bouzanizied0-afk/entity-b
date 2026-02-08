@@ -18,7 +18,6 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 
 <input id="textInput" placeholder="اكتب حرف أو كلمة">
 <button id="addTextBtn">إضافة نص</button>
-<button id="addFileBtn">إضافة ملف محلي</button>
 <button id="clearBtn">🗑 مسح كل المحتوى المحلي</button>
 
 <div id="localQueue"></div>
@@ -60,8 +59,7 @@ function updateQueueDisplay() {
    Canvas & Translator
 =============================== */
 const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const translator = new UniversalMomentTranslator(ctx);
+const translator = new UniversalMomentTranslator(canvas, localQueue);
 
 /* ===============================
    Subscribe to moment
@@ -71,7 +69,7 @@ onValue(momentRef, snapshot=>{
     const moment = snapshot.val();
     if(moment===null) return;
     momentDisplay.textContent = moment;
-    translator.onMoment(moment, localQueue);
+    translator.onMoment(moment); // كل شيء يعتمد على moment
 });
 
 /* ===============================
@@ -83,18 +81,6 @@ document.getElementById('addTextBtn').onclick = ()=>{
     localQueue.push({type:'text', value: val});
     updateQueueDisplay();
     document.getElementById('textInput').value = '';
-};
-
-document.getElementById('addFileBtn').onclick = ()=>{
-    const input = document.createElement('input');
-    input.type='file';
-    input.onchange = e=>{
-        const file = e.target.files[0];
-        if(!file) return;
-        localQueue.push({type:'file', value:file.name}); // محتوى الملف يبقى محليًا
-        updateQueueDisplay();
-    };
-    input.click();
 };
 
 document.getElementById('clearBtn').onclick = ()=>{
