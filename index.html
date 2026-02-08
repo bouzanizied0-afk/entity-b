@@ -2,25 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Temporal Primitive via Firebase</title>
+<title>Universal Moment Translator</title>
 <style>
-html,body {
-  margin:0;
-  width:100%;
-  height:100%;
-  font-family: monospace;
-}
+html,body { margin:0; width:100%; height:100%; overflow:hidden; font-family: monospace; background:#000; color:#0f0 }
+canvas { display:block; margin:auto; background:#111 }
 </style>
 </head>
 <body>
 
+<canvas id="canvas" width="256" height="256"></canvas>
 <script type="module">
-/* ===============================
-   Firebase Initialization
-   =============================== */
+
+import { UniversalMomentTranslator } from './universal-moment-translator.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+/* ===============================
+   Firebase Initialization
+=============================== */
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
@@ -30,69 +29,26 @@ const firebaseConfig = {
   messagingSenderId: "456612217542",
   appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const momentRef = ref(db, 'temporal/tick');
 
 /* ===============================
-   Universal Moment Translator
-   =============================== */
-class Translator {
-  onMoment(moment, potentialStates) {
-    if (!potentialStates.length) return null;
-    const index = this.reduce(moment, potentialStates.length);
-    return potentialStates[index];
-  }
-
-  reduce(moment, size) {
-    return moment % size;
-  }
-}
+   Canvas & Translator
+=============================== */
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const translator = new UniversalMomentTranslator(ctx);
 
 /* ===============================
-   Potential State Space
-   =============================== */
-const potentialStates = [
-  { type: "color", value: "#000000" },
-  { type: "color", value: "#111111" },
-  { type: "color", value: "#222222" },
-  { type: "color", value: "#333333" },
-  { type: "text", value: "A" },
-  { type: "text", value: "B" },
-  { type: "text", value: "C" }
-];
-
-/* ===============================
-   Observe Universal Moment
-   =============================== */
-const momentRef = ref(db, "temporal/tick"); // فقط الرقم من Firebase
-const translator = new Translator();
-
-onValue(momentRef, (snapshot) => {
-  const moment = snapshot.val();
-  if (moment === null) return;
-
-  const state = translator.onMoment(moment, potentialStates);
-  if (!state) return;
-
-  reconstruct(state);
+   Subscribe to moment
+=============================== */
+onValue(momentRef, (snapshot)=>{
+    const moment = snapshot.val();
+    if(moment===null) return;
+    translator.onMoment(moment);
 });
 
-/* ===============================
-   Deterministic Reconstruction
-   =============================== */
-function reconstruct(state) {
-  if (state.type === "color") {
-    document.body.style.background = state.value;
-    document.body.textContent = "";
-  }
-
-  if (state.type === "text") {
-    document.body.style.background = "#000";
-    document.body.textContent = state.value;
-  }
-}
 </script>
-
 </body>
 </html>
