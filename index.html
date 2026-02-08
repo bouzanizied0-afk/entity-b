@@ -57,47 +57,81 @@ button {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// 🔐 إعداد Firebase
+/* =============================
+   1️⃣ إعداد Firebase (الخادم الأعمى)
+============================= */
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
   databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
   projectId: "setouchi-it",
-  storageBucket: "setouchi-it.appspot.com",
-  messagingSenderId: "456612217542",
-  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const counterRef = ref(db, "temporal/counter");
 
+/* =============================
+   2️⃣ العداد المتزامن المطلق
+============================= */
 const counterDiv = document.getElementById("counter");
 
-// ===== العداد المتزامن الأعمى =====
-onValue(counterRef, (snapshot) => {
-  const val = snapshot.val();
-  if(val !== null) counterDiv.textContent = val;
+// قراءة الرقم فقط (لا معنى – لا تفسير)
+onValue(counterRef, snap => {
+  if (snap.exists()) {
+    counterDiv.textContent = snap.val();
+    interpretMoment(snap.val()); // التفسير محلي فقط
+  }
 });
 
-// الخادم يتحرك تلقائيًا كل 600ms
-setInterval(async () => {
+// كتابة الرقم (وظيفة وحيدة للخادم)
+setInterval(() => {
   const current = parseInt(counterDiv.textContent || "0", 10);
-  const next = current + 1;
-  await set(counterRef, next);
+  set(counterRef, current + 1);
 }, 600);
 
-// ===== واجهة وهمية لإرسال النصوص والملفات =====
-// الزر موجود لكنه لن يرسل شيء للخادم
-document.getElementById("sendBtn").addEventListener("click", ()=>{
-  alert("هذا الزر الآن لا يفعل شيئًا؛ الخادم أعمى ولا يعرف النصوص.");
-});
-document.getElementById("fileBtn").addEventListener("click", ()=>{
-  alert("هذا الزر الآن لا يفعل شيئًا؛ الخادم أعمى ولا يعرف الملفات.");
-});
-document.getElementById("clearBtn").addEventListener("click", ()=>{
-  alert("لا يوجد شيء لمسحه؛ الخادم أعمى تمامًا.");
-});
+/* =============================
+   3️⃣ المترجم الزمني (محلي)
+============================= */
+const chat = document.getElementById("chat");
+
+/*
+  هذا هو جوهر فكرتك:
+  نفس الرقم → معاني مختلفة حسب الشيفرة
+*/
+function interpretMoment(moment) {
+
+  // مثال شيفرة: تحويل الزمن إلى حرف
+  const alphabet = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
+  const letter = alphabet[moment % alphabet.length];
+
+  // مثال حالة / معنى
+  let state = "";
+  if (moment % 15 === 0) state = "⚠ لحظة انعطاف";
+  else if (moment % 7 === 0) state = "✦ توافق زمني";
+  else state = "• مرور عادي";
+
+  render(`${letter} — ${state}`);
+}
+
+function render(text) {
+  const line = document.createElement("div");
+  line.textContent = text;
+  chat.appendChild(line);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+/* =============================
+   4️⃣ الواجهة الوهمية (لا خادم)
+============================= */
+document.getElementById("sendBtn").onclick = () =>
+  alert("الخادم أعمى: لا نصوص، فقط زمن.");
+
+document.getElementById("fileBtn").onclick = () =>
+  alert("الخادم أعمى: لا ملفات، فقط لحظة.");
+
+document.getElementById("clearBtn").onclick = () =>
+  alert("لا يوجد شيء يُمسح؛ الزمن لا يُحذف.");
 
 </script>
 </body>
