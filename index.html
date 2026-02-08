@@ -26,6 +26,10 @@ body {
   border:1px solid #0f0;
   padding:10px;
 }
+#output {
+  margin-top:20px;
+  text-align:center;
+}
 input[type=text] {
   width:50%;
   font-size:18px;
@@ -45,8 +49,8 @@ button {
 
 <h2>⏳ العداد المتزامن الأعمى</h2>
 <div id="counter">0</div>
-
 <div id="chat"></div>
+<div id="output"></div>
 
 <input id="messageInput" placeholder="اكتب رسالتك هنا">
 <button id="sendBtn">إرسال نص</button>
@@ -56,15 +60,19 @@ button {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import "./universal-moment-translator.js";
 
 /* =============================
-   1️⃣ إعداد Firebase (الخادم الأعمى)
+   1️⃣ إعداد Firebase
 ============================= */
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
   databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
   projectId: "setouchi-it",
+  storageBucket: "setouchi-it.appspot.com",
+  messagingSenderId: "456612217542",
+  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -72,67 +80,31 @@ const db = getDatabase(app);
 const counterRef = ref(db, "temporal/counter");
 
 /* =============================
-   2️⃣ العداد المتزامن المطلق
+   2️⃣ العداد المتزامن الأعمى
 ============================= */
 const counterDiv = document.getElementById("counter");
 
-// قراءة الرقم فقط (لا معنى – لا تفسير)
 onValue(counterRef, snap => {
-  if (snap.exists()) {
-    counterDiv.textContent = snap.val();
-    interpretMoment(snap.val()); // التفسير محلي فقط
-  }
+  if (snap.exists()) counterDiv.textContent = snap.val();
 });
 
-// كتابة الرقم (وظيفة وحيدة للخادم)
 setInterval(() => {
   const current = parseInt(counterDiv.textContent || "0", 10);
   set(counterRef, current + 1);
 }, 600);
 
 /* =============================
-   3️⃣ المترجم الزمني (محلي)
-============================= */
-const chat = document.getElementById("chat");
-
-/*
-  هذا هو جوهر فكرتك:
-  نفس الرقم → معاني مختلفة حسب الشيفرة
-*/
-function interpretMoment(moment) {
-
-  // مثال شيفرة: تحويل الزمن إلى حرف
-  const alphabet = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
-  const letter = alphabet[moment % alphabet.length];
-
-  // مثال حالة / معنى
-  let state = "";
-  if (moment % 15 === 0) state = "⚠ لحظة انعطاف";
-  else if (moment % 7 === 0) state = "✦ توافق زمني";
-  else state = "• مرور عادي";
-
-  render(`${letter} — ${state}`);
-}
-
-function render(text) {
-  const line = document.createElement("div");
-  line.textContent = text;
-  chat.appendChild(line);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-/* =============================
-   4️⃣ الواجهة الوهمية (لا خادم)
+   3️⃣ أزرار وهمية (الخادم أعمى)
 ============================= */
 document.getElementById("sendBtn").onclick = () =>
-  alert("الخادم أعمى: لا نصوص، فقط زمن.");
+  alert("الخادم أعمى: لا نصوص، فقط لحظة.");
 
 document.getElementById("fileBtn").onclick = () =>
   alert("الخادم أعمى: لا ملفات، فقط لحظة.");
 
 document.getElementById("clearBtn").onclick = () =>
   alert("لا يوجد شيء يُمسح؛ الزمن لا يُحذف.");
-
 </script>
+
 </body>
 </html>
