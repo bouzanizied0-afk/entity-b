@@ -2,31 +2,62 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ عداد متزامن بالخادم</title>
+<title>⏳ Temporal Chat مع عداد متزامن</title>
 <style>
 body {
   background:#000;
   color:#0f0;
   font-family: monospace;
   text-align:center;
-  padding-top:50px;
+  padding-top:20px;
 }
 #counter {
   font-size:64px;
   margin:20px;
 }
+#chat {
+  font-size:22px;
+  color:#ff0;
+  margin:20px auto;
+  width:80%;
+  max-height:300px;
+  overflow-y:auto;
+  text-align:left;
+  border:1px solid #0f0;
+  padding:10px;
+}
+input[type=text] {
+  width:50%;
+  font-size:18px;
+  padding:8px;
+}
+button {
+  font-size:16px;
+  padding:8px 16px;
+  margin:5px;
+  background:#003300;
+  color:#0f0;
+  border:1px solid #0f0;
+}
 </style>
 </head>
 <body>
 
-<h2>⏳ العداد المتزامن</h2>
+<h2>⏳ العداد المتزامن + دردشة زمنية</h2>
 <div id="counter">0</div>
+
+<div id="chat"></div>
+
+<input id="messageInput" placeholder="اكتب رسالتك هنا">
+<button id="sendBtn">إرسال نص</button>
+<button id="fileBtn">إرسال ملف</button>
+<button id="clearBtn">🗑 حذف الكل</button>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, push, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// 🔐 إعداد Firebase (استبدل بالبيانات الخاصة بك إذا لزم)
+// 🔐 إعداد Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
@@ -40,21 +71,81 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const counterRef = ref(db, "temporal/counter");
+const chatRef = ref(db, "temporal/messages");
 
 const counterDiv = document.getElementById("counter");
+const chatDiv = document.getElementById("chat");
+const input = document.getElementById("messageInput");
 
-// استقبال القيمة الحالية من الخادم
+// ===== العداد المتزامن =====
 onValue(counterRef, (snapshot) => {
   const val = snapshot.val();
   if(val !== null) counterDiv.textContent = val;
 });
 
-// تحديث العداد في الخادم كل 600 مللي ثانية
 setInterval(async () => {
   const current = parseInt(counterDiv.textContent || "0", 10);
   const next = current + 1;
   await set(counterRef, next);
 }, 600);
+
+// ===== استقبال الرسائل =====
+onValue(chatRef, (snapshot) => {
+  const messages = snapshot.val() || {};
+  chatDiv.innerHTML = "";
+  Object.values(messages).forEach(msg => {
+    const div = document.createElement("div");
+    if(msg.type === "text") div.textContent = msg.text;
+    else if(msg.type === "file") {
+      if(msg.fileType.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.src = msg.url;
+        img.style.maxWidth = "80%";
+        div.appendChild(img);
+      } else if(msg.fileType.startsWith("video/")) {
+        const vid = document.createElement("video");
+        vid.src = msg.url;
+        vid.controls = true;
+        vid.style.maxWidth = "80%";
+        div.appendChild(vid);
+      } else {
+        div.textContent = `[ملف] ${msg.fileName}`;
+      }
+    }
+    chatDiv.appendChild(div);
+  });
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+});
+
+// ===== إرسال نص =====
+document.getElementById("sendBtn").addEventListener("click", ()=>{
+  const text = input.value.trim();
+  if(!text) return;
+  push(chatRef, {type:"text", text});
+  input.value = "";
+});
+
+// ===== إرسال ملف =====
+document.getElementById("fileBtn").addEventListener("click", ()=>{
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.onchange = e => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      // نرفع الملف كـ data URL مباشرة
+      push(chatRef, {type:"file", fileName:file.name, fileType:file.type, url:evt.target.result});
+    };
+    reader.readAsDataURL(file);
+  };
+  fileInput.click();
+});
+
+// ===== حذف الكل =====
+document.getElementById("clearBtn").addEventListener("click", ()=>{
+  set(chatRef, null);
+});
 
 </script>
 </body>
