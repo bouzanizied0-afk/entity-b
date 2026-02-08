@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>Universal Moment Translator – Local UI</title>
+<title>Universal Moment Translator – Socket.IO</title>
 <style>
 body { margin:0; font-family: monospace; background:#000; color:#0f0; text-align:center; }
 #momentDisplay { font-size:64px; margin:20px; }
@@ -18,6 +18,7 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 
 <input id="textInput" placeholder="اكتب حرف أو كلمة">
 <button id="addTextBtn">إضافة نص</button>
+<button id="addFileBtn">إضافة ملف محلي</button>
 <button id="clearBtn">🗑 مسح كل المحتوى المحلي</button>
 
 <div id="localQueue"></div>
@@ -26,31 +27,18 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 
 <script type="module">
 import { UniversalMomentTranslator } from './universal-moment-translator.js';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js";
 
 /* ===============================
-   Firebase Initialization
+   Socket.IO Client – connect to server
 =============================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "setouchi-it",
-  storageBucket: "setouchi-it.appspot.com",
-  messagingSenderId: "456612217542",
-  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const momentRef = ref(db, 'temporal/tick');
+const socket = io("http://localhost:3000");
 
 /* ===============================
    Local Buffers
 =============================== */
 const localQueue = [];
 const queueDiv = document.getElementById('localQueue');
-
 function updateQueueDisplay() {
     queueDiv.innerHTML = localQueue.map((item,i)=>`[${i}] ${item.type}: ${item.value}`).join('<br>');
 }
@@ -62,14 +50,12 @@ const canvas = document.getElementById('canvas');
 const translator = new UniversalMomentTranslator(canvas, localQueue);
 
 /* ===============================
-   Subscribe to moment
+   Moment Observer
 =============================== */
 const momentDisplay = document.getElementById('momentDisplay');
-onValue(momentRef, snapshot=>{
-    const moment = snapshot.val();
-    if(moment===null) return;
+socket.on("moment", (moment)=>{
     momentDisplay.textContent = moment;
-    translator.onMoment(moment); // كل شيء يعتمد على moment
+    translator.onMoment(moment);
 });
 
 /* ===============================
@@ -81,6 +67,18 @@ document.getElementById('addTextBtn').onclick = ()=>{
     localQueue.push({type:'text', value: val});
     updateQueueDisplay();
     document.getElementById('textInput').value = '';
+};
+
+document.getElementById('addFileBtn').onclick = ()=>{
+    const input = document.createElement('input');
+    input.type='file';
+    input.onchange = e=>{
+        const file = e.target.files[0];
+        if(!file) return;
+        localQueue.push({type:'file', value:file.name});
+        updateQueueDisplay();
+    };
+    input.click();
 };
 
 document.getElementById('clearBtn').onclick = ()=>{
