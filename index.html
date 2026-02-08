@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Chat مع عداد متزامن – Leader Edition</title>
+<title>⏳ Temporal Chat مع عداد متزامن</title>
 <style>
 body {
   background:#000;
@@ -11,39 +11,15 @@ body {
   text-align:center;
   padding-top:20px;
 }
-#counter {
-  font-size:64px;
-  margin:20px;
-}
-#chat {
-  font-size:22px;
-  color:#ff0;
-  margin:20px auto;
-  width:80%;
-  max-height:300px;
-  overflow-y:auto;
-  text-align:left;
-  border:1px solid #0f0;
-  padding:10px;
-}
-input[type=text] {
-  width:50%;
-  font-size:18px;
-  padding:8px;
-}
-button {
-  font-size:16px;
-  padding:8px 16px;
-  margin:5px;
-  background:#003300;
-  color:#0f0;
-  border:1px solid #0f0;
-}
+#counter { font-size:64px; margin:20px; }
+#chat { font-size:22px; color:#ff0; margin:20px auto; width:80%; max-height:300px; overflow-y:auto; text-align:left; border:1px solid #0f0; padding:10px; }
+input[type=text] { width:50%; font-size:18px; padding:8px; }
+button { font-size:16px; padding:8px 16px; margin:5px; background:#003300; color:#0f0; border:1px solid #0f0; }
 </style>
 </head>
 <body>
 
-<h2>⏳ العداد المتزامن + دردشة زمنية (Leader Edition)</h2>
+<h2>⏳ العداد المتزامن + دردشة زمنية</h2>
 <div id="counter">0</div>
 
 <div id="chat"></div>
@@ -52,14 +28,13 @@ button {
 <button id="sendBtn">إرسال نص</button>
 <button id="fileBtn">إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
+<button id="leaderBtn">▶ تشغيل العداد</button>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, push, set, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, set, push, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-/* =============================
-   إعداد Firebase
-============================= */
+// ================= Firebase Config =================
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
@@ -69,89 +44,75 @@ const firebaseConfig = {
   messagingSenderId: "456612217542",
   appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-
 const counterRef = ref(db, "temporal/counter");
 const leaderRef = ref(db, "temporal/leader");
 const chatRef = ref(db, "temporal/messages");
 
+// ================= DOM Elements =================
 const counterDiv = document.getElementById("counter");
 const chatDiv = document.getElementById("chat");
 const input = document.getElementById("messageInput");
+const leaderBtn = document.getElementById("leaderBtn");
 
+let localInterval = null;
 let isLeader = false;
-let localCounter = 0;
-let heartbeatInterval;
 
-/* =============================
-   اختيار القائد (Leader Election)
-============================= */
-async function attemptLeadership() {
-  const snapshot = await leaderRef.get();
-  if(!snapshot.exists()) {
-    // لا يوجد قائد → أصبح القائد
-    isLeader = true;
-    set(leaderRef, { timestamp: Date.now() });
-    // إزالة القائد عند إغلاق الصفحة
-    onDisconnect(leaderRef).remove();
-    startLeaderCounter();
-  } else {
-    // يوجد قائد → نزامن مع القائد
-    isLeader = false;
-  }
+// ================= Sync Counter & Leader =================
+onValue(leaderRef, snap => {
+  const leaderId = snap.val();
+  isLeader = (leaderId === window.sessionStorage.getItem("clientId"));
+  leaderBtn.textContent = isLeader ? "⏸ إيقاف العداد" : "▶ تشغيل العداد";
+});
+
+onValue(counterRef, snap => {
+  const val = snap.val();
+  if(val !== null) counterDiv.textContent = val;
+});
+
+// ================= Generate unique clientId =================
+if(!window.sessionStorage.getItem("clientId")) {
+  window.sessionStorage.setItem("clientId", "client_" + Date.now() + "_" + Math.floor(Math.random()*1000));
 }
+const clientId = window.sessionStorage.getItem("clientId");
 
-/* =============================
-   العداد للقائد
-============================= */
-function startLeaderCounter() {
-  heartbeatInterval = setInterval(async ()=>{
-    localCounter++;
-    await set(counterRef, localCounter);
-    await set(leaderRef, { timestamp: Date.now() }); // heartbeat
+// ================= Leader Button =================
+leaderBtn.onclick = async () => {
+  if(isLeader){
+    clearInterval(localInterval);
+    localInterval = null;
+    await set(leaderRef, null);
+  } else {
+    await set(leaderRef, clientId);
+    startCounter();
+  }
+};
+
+// ================= Start Counter =================
+function startCounter(){
+  if(localInterval) return;
+  localInterval = setInterval(async ()=>{
+    let current = parseInt(counterDiv.textContent || "0", 10);
+    current++;
+    await set(counterRef, current);
   }, 600);
 }
 
-/* =============================
-   متابعة العداد لكل العملاء
-============================= */
-onValue(counterRef, (snapshot)=>{
-  const val = snapshot.val();
-  if(val !== null){
-    counterDiv.textContent = val;
-    if(!isLeader) localCounter = val; // تحديث عداد العميل غير القائد
-  }
-});
-
-/* =============================
-   متابعة القائد (heartbeat)
-============================= */
-onValue(leaderRef, (snapshot)=>{
-  const val = snapshot.val();
-  if(!val && !isLeader){
-    // القائد اختفى → محاولة أن أصبح قائد
-    attemptLeadership();
-  }
-});
-
-/* =============================
-   استقبال الرسائل
-============================= */
-onValue(chatRef, (snapshot)=>{
+// ================= Chat =================
+onValue(chatRef, (snapshot) => {
   const messages = snapshot.val() || {};
   chatDiv.innerHTML = "";
   Object.values(messages).forEach(msg => {
     const div = document.createElement("div");
-    if(msg.type === "text") div.textContent = msg.text;
-    else if(msg.type === "file") {
-      if(msg.fileType.startsWith("image/")) {
+    if(msg.type==="text") div.textContent = msg.text;
+    else if(msg.type==="file"){
+      if(msg.fileType.startsWith("image/")){
         const img = document.createElement("img");
         img.src = msg.url;
         img.style.maxWidth = "80%";
         div.appendChild(img);
-      } else if(msg.fileType.startsWith("video/")) {
+      } else if(msg.fileType.startsWith("video/")){
         const vid = document.createElement("video");
         vid.src = msg.url;
         vid.controls = true;
@@ -166,45 +127,34 @@ onValue(chatRef, (snapshot)=>{
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
 
-/* =============================
-   إرسال النصوص
-============================= */
-document.getElementById("sendBtn").addEventListener("click", ()=>{
+// إرسال نص
+document.getElementById("sendBtn").onclick = ()=>{
   const text = input.value.trim();
   if(!text) return;
   push(chatRef, {type:"text", text});
   input.value = "";
-});
+};
 
-/* =============================
-   إرسال الملفات
-============================= */
-document.getElementById("fileBtn").addEventListener("click", ()=>{
-  const fileInput = document.createElement('input');
-  fileInput.type='file';
+// إرسال ملف
+document.getElementById("fileBtn").onclick = ()=>{
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
   fileInput.onchange = e=>{
     const file = e.target.files[0];
     if(!file) return;
     const reader = new FileReader();
-    reader.onload = evt => {
+    reader.onload = evt=>{
       push(chatRef, {type:"file", fileName:file.name, fileType:file.type, url:evt.target.result});
     };
     reader.readAsDataURL(file);
   };
   fileInput.click();
-});
+};
 
-/* =============================
-   حذف كل الرسائل
-============================= */
-document.getElementById("clearBtn").addEventListener("click", ()=>{
+// حذف الكل
+document.getElementById("clearBtn").onclick = ()=>{
   set(chatRef, null);
-});
-
-/* =============================
-   بدء العملية
-============================= */
-attemptLeadership();
+};
 
 </script>
 </body>
