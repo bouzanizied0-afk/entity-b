@@ -2,109 +2,56 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ العداد المتزامن الأعمى</title>
+<title>⏳ Blind Temporal Counter</title>
 <style>
-body {
-  background:#000;
-  color:#0f0;
-  font-family: monospace;
-  text-align:center;
-  padding-top:20px;
-}
-#counter {
-  font-size:64px;
-  margin:20px;
-}
-#chat {
-  font-size:22px;
-  color:#ff0;
-  margin:20px auto;
-  width:80%;
-  max-height:300px;
-  overflow-y:auto;
-  text-align:left;
-  border:1px solid #0f0;
-  padding:10px;
-}
-#output {
-  margin-top:20px;
-  text-align:center;
-}
-input[type=text] {
-  width:50%;
-  font-size:18px;
-  padding:8px;
-}
-button {
-  font-size:16px;
-  padding:8px 16px;
-  margin:5px;
-  background:#003300;
-  color:#0f0;
-  border:1px solid #0f0;
-}
+body { background:#000; color:#0f0; font-family:monospace; text-align:center; padding-top:20px; }
+#counter { font-size:64px; margin:20px; }
+input, button { font-size:18px; padding:8px; margin:5px; }
 </style>
 </head>
 <body>
 
 <h2>⏳ العداد المتزامن الأعمى</h2>
 <div id="counter">0</div>
-<div id="chat"></div>
-<div id="output"></div>
 
-<input id="messageInput" placeholder="اكتب رسالتك هنا">
-<button id="sendBtn">إرسال نص</button>
-<button id="fileBtn">إرسال ملف</button>
-<button id="clearBtn">🗑 حذف الكل</button>
+<input id="momentInput" placeholder="اكتب أي شيء">
+<button id="sendBtn">إرسال</button>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-import "./universal-moment-translator.js";
 
-/* =============================
-   1️⃣ إعداد Firebase
-============================= */
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "setouchi-it",
-  storageBucket: "setouchi-it.appspot.com",
-  messagingSenderId: "456612217542",
-  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "setouchi-it"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const counterRef = ref(db, "temporal/counter");
 
-/* =============================
-   2️⃣ العداد المتزامن الأعمى
-============================= */
+const counterRef = ref(db, "temporal/counter");
+const momentRef  = ref(db, "temporal/moment");
+
 const counterDiv = document.getElementById("counter");
 
-onValue(counterRef, snap => {
-  if (snap.exists()) counterDiv.textContent = snap.val();
+// تزامن العداد
+onValue(counterRef, s => {
+  if (s.exists()) counterDiv.textContent = s.val();
 });
 
+// نبض العداد
 setInterval(() => {
-  const current = parseInt(counterDiv.textContent || "0", 10);
-  set(counterRef, current + 1);
+  const v = parseInt(counterDiv.textContent || "0", 10);
+  set(counterRef, v + 1);
 }, 600);
 
-/* =============================
-   3️⃣ أزرار وهمية (الخادم أعمى)
-============================= */
-document.getElementById("sendBtn").onclick = () =>
-  alert("الخادم أعمى: لا نصوص، فقط لحظة.");
-
-document.getElementById("fileBtn").onclick = () =>
-  alert("الخادم أعمى: لا ملفات، فقط لحظة.");
-
-document.getElementById("clearBtn").onclick = () =>
-  alert("لا يوجد شيء يُمسح؛ الزمن لا يُحذف.");
+// إرسال لحظة فقط (لا محتوى)
+document.getElementById("sendBtn").onclick = () => {
+  const raw = document.getElementById("momentInput").value;
+  const moment = Date.now() ^ raw.length; // اختزال → رقم فقط
+  set(momentRef, moment);
+};
 </script>
-
 </body>
 </html>
