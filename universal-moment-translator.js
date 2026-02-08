@@ -1,42 +1,69 @@
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+export class UniversalMomentTranslator {
 
-const firebaseConfig = {
-  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "setouchi-it"
-};
+    constructor(canvasContext, localQueue) {
+        this.ctx = canvasContext;
+        this.localQueue = localQueue; // ربط بالـ queue المحلي
+        this.INTERPRETATION_SPACE = this.buildInterpretationSpace();
+    }
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+    /* ===============================
+       Moment Observer
+    =============================== */
+    onMoment(moment) {
+        if(this.localQueue.length>0){
+            // deterministic choice من queue المحلي
+            const index = moment % this.localQueue.length;
+            const state = this.localQueue[index];
+            this.executeState(state);
+        } else {
+            // fallback: deterministic state من INTERPRETATION_SPACE
+            const stateId = this.reducer(moment);
+            const action = this.INTERPRETATION_SPACE[stateId];
+            if(action) action();
+        }
+    }
 
-const momentRef = ref(db, "temporal/moment");
+    /* ===============================
+       Deterministic Reducer
+    =============================== */
+    reducer(moment) {
+        const keys = Object.keys(this.INTERPRETATION_SPACE);
+        return keys[moment % keys.length];
+    }
 
-// فضاء التفسير (محلي فقط)
-const MAP = {
-  1: () => renderImage("assets/a.png"),
-  2: () => renderImage("assets/b.png"),
-  3: () => renderText("ف"),
-  4: () => renderText("🙂")
-};
+    /* ===============================
+       Execute State / Render
+    =============================== */
+    executeState(state){
+        const ctx = this.ctx;
+        ctx.canvas.width=256; ctx.canvas.height=256;
+        ctx.fillStyle="#000"; ctx.fillRect(0,0,256,256);
 
-onValue(momentRef, s => {
-  if (!s.exists()) return;
-  const m = s.val();
-  const key = Math.abs(m) % 5;
-  if (MAP[key]) MAP[key]();
-});
+        if(state.type==='text'){
+            ctx.fillStyle="#0f0";
+            ctx.font="32px monospace";
+            ctx.fillText(state.value,50,140);
+        }
 
-function renderImage(src) {
-  const img = document.createElement("img");
-  img.src = src;
-  img.style.maxWidth = "300px";
-  document.body.appendChild(img);
-}
+        if(state.type==='file'){
+            // مجرد عرض اسم الملف
+            ctx.fillStyle="#0ff";
+            ctx.font="16px monospace";
+            ctx.fillText("File: "+state.value,10,128);
+        }
+    }
 
-function renderText(t) {
-  const d = document.createElement("div");
-  d.textContent = t;
-  d.style.fontSize = "48px";
-  document.body.appendChild(d);
+    /* ===============================
+       Interpretation Space – local deterministic
+    =============================== */
+    buildInterpretationSpace() {
+        const ctx = this.ctx;
+        return {
+            '0': ()=>{ ctx.fillStyle="#0f0"; ctx.fillRect(0,0,256,256); },
+            '1': ()=>{ ctx.fillStyle="#00f"; ctx.fillRect(0,0,256,256); },
+            '2': ()=>{ ctx.fillStyle="#f00"; ctx.fillRect(0,0,256,256); },
+            '3': ()=>{ ctx.fillStyle="#ff0"; ctx.fillRect(0,0,256,256); },
+            '4': ()=>{ ctx.fillStyle="#0ff"; ctx.fillRect(0,0,256,256); }
+        };
+    }
 }
