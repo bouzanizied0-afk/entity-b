@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+// 🔐 إعداد Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
@@ -11,19 +12,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// هذا هو "الزمن" المشترك
-const timeRef = ref(db, "time/minute");
+// 🕰️ الزمن الحقيقي (الخادم فقط)
+const clockRef = ref(db, "system/clock");
 
-// الاستماع للتغيرات
-export function listenTime(callback) {
-  onValue(timeRef, snap => {
+// 📡 الاستماع للزمن (قراءة فقط)
+export function listenClock(callback) {
+  onValue(clockRef, snap => {
     if (snap.exists()) {
-      callback(snap.val());
+      callback(snap.val()); // { tick, epoch, updatedAt }
     }
   });
-}
-
-// الكتابة (تغيير الدقيقة)
-export function writeMinute(minute) {
-  set(timeRef, minute);
 }
