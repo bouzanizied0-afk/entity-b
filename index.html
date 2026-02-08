@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>Universal Moment Translator – Socket.IO</title>
+<title>Universal Moment Translator – Firebase</title>
 <style>
 body { margin:0; font-family: monospace; background:#000; color:#0f0; text-align:center; }
 #momentDisplay { font-size:64px; margin:20px; }
@@ -13,7 +13,7 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 </head>
 <body>
 
-<h2>⏳ Universal Moment Translator – Local Interface</h2>
+<h2>⏳ Universal Moment Translator – Firebase</h2>
 <div id="momentDisplay">0</div>
 
 <input id="textInput" placeholder="اكتب حرف أو كلمة">
@@ -27,12 +27,24 @@ canvas { display:block; margin:auto; background:#111; border:1px solid #0f0; }
 
 <script type="module">
 import { UniversalMomentTranslator } from './universal-moment-translator.js';
-import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, onValue, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 /* ===============================
-   Socket.IO Client – connect to server
+   Firebase Initialization
 =============================== */
-const socket = io("http://localhost:3000");
+const firebaseConfig = {
+  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+  authDomain: "setouchi-it.firebaseapp.com",
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "setouchi-it",
+  storageBucket: "setouchi-it.appspot.com",
+  messagingSenderId: "456612217542",
+  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const momentRef = ref(db, 'temporal/moment'); // 🔹 هذا هو الوسيط الوحيد
 
 /* ===============================
    Local Buffers
@@ -50,13 +62,33 @@ const canvas = document.getElementById('canvas');
 const translator = new UniversalMomentTranslator(canvas, localQueue);
 
 /* ===============================
-   Moment Observer
+   Moment Observer & Initialization
 =============================== */
 const momentDisplay = document.getElementById('momentDisplay');
-socket.on("moment", (moment)=>{
+
+async function initMoment() {
+    // إذا لم يكن هناك قيمة، ابدأ من 0
+    const snapshot = await get(momentRef);
+    if(!snapshot.exists()) {
+        set(momentRef, 0);
+    }
+}
+initMoment();
+
+// كل client يستمع للـ moment ويحدث العداد مباشرة
+onValue(momentRef, snapshot=>{
+    const moment = snapshot.val();
+    if(moment===null) return;
     momentDisplay.textContent = moment;
     translator.onMoment(moment);
 });
+
+// 🔹 Optional: client يمكنه توليد moment بشكل مستمر
+setInterval(async ()=>{
+    const snapshot = await get(momentRef);
+    const current = snapshot.exists() ? snapshot.val() : 0;
+    set(momentRef, current + 1); // تحديث مشترك لجميع العملاء
+}, 100); // granularity 100ms
 
 /* ===============================
    Input Handlers (Local Only)
