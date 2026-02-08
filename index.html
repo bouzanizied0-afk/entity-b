@@ -1,57 +1,98 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Blind Temporal Counter</title>
+<title>Temporal Primitive via Firebase</title>
 <style>
-body { background:#000; color:#0f0; font-family:monospace; text-align:center; padding-top:20px; }
-#counter { font-size:64px; margin:20px; }
-input, button { font-size:18px; padding:8px; margin:5px; }
+html,body {
+  margin:0;
+  width:100%;
+  height:100%;
+  font-family: monospace;
+}
 </style>
 </head>
 <body>
 
-<h2>⏳ العداد المتزامن الأعمى</h2>
-<div id="counter">0</div>
-
-<input id="momentInput" placeholder="اكتب أي شيء">
-<button id="sendBtn">إرسال</button>
-
 <script type="module">
+/* ===============================
+   Firebase Initialization
+   =============================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "setouchi-it"
+  authDomain: "setouchi-it.firebaseapp.com",
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "setouchi-it",
+  storageBucket: "setouchi-it.appspot.com",
+  messagingSenderId: "456612217542",
+  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const counterRef = ref(db, "temporal/counter");
-const momentRef  = ref(db, "temporal/moment");
+/* ===============================
+   Universal Moment Translator
+   =============================== */
+class Translator {
+  onMoment(moment, potentialStates) {
+    if (!potentialStates.length) return null;
+    const index = this.reduce(moment, potentialStates.length);
+    return potentialStates[index];
+  }
 
-const counterDiv = document.getElementById("counter");
+  reduce(moment, size) {
+    return moment % size;
+  }
+}
 
-// تزامن العداد
-onValue(counterRef, s => {
-  if (s.exists()) counterDiv.textContent = s.val();
+/* ===============================
+   Potential State Space
+   =============================== */
+const potentialStates = [
+  { type: "color", value: "#000000" },
+  { type: "color", value: "#111111" },
+  { type: "color", value: "#222222" },
+  { type: "color", value: "#333333" },
+  { type: "text", value: "A" },
+  { type: "text", value: "B" },
+  { type: "text", value: "C" }
+];
+
+/* ===============================
+   Observe Universal Moment
+   =============================== */
+const momentRef = ref(db, "temporal/tick"); // فقط الرقم من Firebase
+const translator = new Translator();
+
+onValue(momentRef, (snapshot) => {
+  const moment = snapshot.val();
+  if (moment === null) return;
+
+  const state = translator.onMoment(moment, potentialStates);
+  if (!state) return;
+
+  reconstruct(state);
 });
 
-// نبض العداد
-setInterval(() => {
-  const v = parseInt(counterDiv.textContent || "0", 10);
-  set(counterRef, v + 1);
-}, 600);
+/* ===============================
+   Deterministic Reconstruction
+   =============================== */
+function reconstruct(state) {
+  if (state.type === "color") {
+    document.body.style.background = state.value;
+    document.body.textContent = "";
+  }
 
-// إرسال لحظة فقط (لا محتوى)
-document.getElementById("sendBtn").onclick = () => {
-  const raw = document.getElementById("momentInput").value;
-  const moment = Date.now() ^ raw.length; // اختزال → رقم فقط
-  set(momentRef, moment);
-};
+  if (state.type === "text") {
+    document.body.style.background = "#000";
+    document.body.textContent = state.value;
+  }
+}
 </script>
+
 </body>
 </html>
