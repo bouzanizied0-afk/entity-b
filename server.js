@@ -1,22 +1,24 @@
 import express from "express";
-import { createServer } from "http";
-import { Server } from "socket.io";
 
 const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: "*" }
+app.use(express.json({ limit: "50mb" }));
+
+// التخزين الأعمى: counter → value
+const store = new Map();
+
+app.post("/push", (req, res) => {
+  const { counter, value } = req.body;
+  store.set(counter, value);
+  res.sendStatus(200);
 });
 
-// Universal Moment (not a counter, monotonic only)
-let moment = 0;
-
-// One-way temporal source
-setInterval(() => {
-  moment++;
-  io.emit("moment", moment);
-}, 100); // granularity = 100ms
-
-httpServer.listen(3000, () => {
-  console.log("⏳ Temporal Authority online");
+app.get("/dump", (req, res) => {
+  const data = [...store.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([counter, value]) => ({ counter, value }));
+  res.json(data);
 });
+
+app.listen(3000, () =>
+  console.log("Blind server running on http://localhost:3000")
+);
