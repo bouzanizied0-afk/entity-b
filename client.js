@@ -20,7 +20,7 @@ function encode(bytes, start = 0) {
 async function sendStream(stream) {
   const display = document.getElementById("counterDisplay"); // عنصر العدّاد في الواجهة
   for (const item of stream) {
-    const url = `https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
+    databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
     try {
       await fetch(url, {
         method: "PUT",
@@ -39,7 +39,7 @@ async function sendStream(stream) {
 
 // --------------------- المرحلة 6 — إعادة البناء ---------------------
 async function fetchStream() {
-  const url = "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
   const res = await fetch(url);
   const data = await res.json();
   
