@@ -44,6 +44,7 @@ button {
 
 <input id="input" placeholder="اكتب أي شيء">
 <button id="sendBtn">إرسال</button>
+<button id="fileBtn">إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
 <button id="leaderBtn">▶ تشغيل العداد</button>
 
@@ -125,7 +126,14 @@ onValue(streamRef, snap=>{
 
   let out = "";
   ticks.forEach(t=>{
-    out += String.fromCharCode(data[t]);
+    const val = data[t];
+    // إذا كان رقم > 255 نفترض أنه حرف
+    if(val <= 255) {
+      // سيتم التعامل معه لاحقًا إذا كان صورة
+      out += ""; 
+    } else {
+      out += String.fromCharCode(val);
+    }
   });
 
   chatDiv.textContent = out;
@@ -147,6 +155,30 @@ document.getElementById("sendBtn").onclick = async ()=>{
   }
 
   input.value = "";
+};
+
+// ================= Send File (Blind) =================
+document.getElementById("fileBtn").onclick = ()=>{
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.onchange = async e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async evt=>{
+      const arr = new Uint8Array(evt.target.result);
+      let tick = parseInt(counterDiv.textContent || "0", 10);
+
+      for(const byte of arr){
+        tick++;
+        await set(ref(db, `temporal/stream/tick_${tick}`), byte);
+        await set(counterRef, tick);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  fileInput.click();
 };
 
 // ================= Clear =================
