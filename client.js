@@ -28,6 +28,7 @@ async function sendStream(stream) {
         body: JSON.stringify(item.value)
       });
       display.textContent = item.counter; // تحديث العدّاد مباشرة
+      await new Promise(r => setTimeout(r, 5)); // نبضة زمنية صغيرة لرؤية العدّاد يتحرك
     } catch (err) {
       console.error("فشل الإرسال:", err);
       alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالسيرفر");
