@@ -2,219 +2,156 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - الصور تلقائيًا</title>
-
+<title>⏳ شات بسيط مع عداد مستقل</title>
 <style>
-html, body {
-  height: 100%;
-  margin: 0;
-}
-
 body {
+  margin:0;
+  padding:0;
   background:#000;
   color:#0f0;
   font-family: monospace;
-  display: flex;
-  flex-direction: column;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
 }
-
-/* العنوان */
-h2 {
-  margin: 10px 0;
-  text-align: center;
-}
-
-/* العداد */
 #counter {
   font-size:48px;
   text-align:center;
-  margin-bottom:10px;
-}
-
-/* الدردشة — تملأ الشاشة */
-#chat {
-  flex: 1;
-  font-size:18px;
-  color:#ff0;
-  width: 100%;
-  overflow-y:auto;
-  border-top:1px solid #0f0;
-  border-bottom:1px solid #0f0;
   padding:10px;
+  border-bottom:1px solid #0f0;
+}
+#chat {
+  flex:1;
+  overflow-y:auto;
+  padding:10px;
+  font-size:18px;
+  border-bottom:1px solid #0f0;
   white-space:pre-wrap;
-  box-sizing: border-box;
 }
-
-/* شريط الإدخال */
-#controls {
+#inputArea {
   display:flex;
-  gap:6px;
-  padding:8px;
-  border-top:1px solid #0f0;
+  padding:10px;
+  gap:5px;
 }
-
 input[type=text] {
   flex:1;
   font-size:16px;
-  padding:6px;
-  background:#000;
-  color:#0f0;
-  border:1px solid #0f0;
+  padding:8px;
 }
-
 button {
-  font-size:14px;
-  padding:6px 10px;
+  font-size:16px;
+  padding:8px 12px;
   background:#003300;
   color:#0f0;
   border:1px solid #0f0;
   cursor:pointer;
 }
-
-img, video {
+img, video, audio {
   max-width:100%;
-  display:block;
   margin-top:10px;
   border:1px solid #0f0;
 }
 </style>
 </head>
-
 <body>
 
-<h2>⏳ بث عددي زمني - الصور تلقائيًا</h2>
 <div id="counter">0</div>
-
 <div id="chat"></div>
 
-<div id="controls">
-  <input id="input" placeholder="اكتب أي شيء">
-  <button id="sendBtn">إرسال</button>
-  <button id="fileBtn">📁</button>
-  <button id="clearBtn">🗑</button>
-  <button id="leaderBtn">▶</button>
+<div id="inputArea">
+  <input id="input" placeholder="اكتب نص...">
+  <button id="sendBtn">إرسال نص</button>
+  <button id="fileBtn">إرسال ملف</button>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, set, push, onChildAdded } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// ================= Firebase =================
+// ===== Firebase Setup =====
 const firebaseConfig = {
-  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "setouchi-it",
-  storageBucket: "setouchi-it.appspot.com",
-  messagingSenderId: "456612217542",
-  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
+  apiKey:"AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+  authDomain:"setouchi-it.firebaseapp.com",
+  databaseURL:"https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId:"setouchi-it",
+  storageBucket:"setouchi-it.appspot.com",
+  messagingSenderId:"456612217542",
+  appId:"1:456612217542:web:51d963523b1306e0bf4dc7"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const counterRef = ref(db, "temporal/counter");
-const leaderRef  = ref(db, "temporal/leader");
-const streamRef  = ref(db, "temporal/stream");
-
-// ================= DOM =================
+// ===== DOM =====
 const counterDiv = document.getElementById("counter");
 const chatDiv = document.getElementById("chat");
 const input = document.getElementById("input");
-const leaderBtn = document.getElementById("leaderBtn");
+const sendBtn = document.getElementById("sendBtn");
+const fileBtn = document.getElementById("fileBtn");
 
-let localInterval = null;
-let isLeader = false;
-
-// ================= Client ID =================
+// ===== Client ID =====
 if(!sessionStorage.getItem("clientId")){
-  sessionStorage.setItem("clientId", "c_" + Date.now() + "_" + Math.random());
+  sessionStorage.setItem("clientId","c_"+Date.now()+"_"+Math.random());
 }
 const clientId = sessionStorage.getItem("clientId");
 
-// ================= Leader =================
-onValue(leaderRef, snap=>{
-  isLeader = snap.val() === clientId;
-  leaderBtn.textContent = isLeader ? "⏸" : "▶";
-});
+// ===== Counter مستقل =====
+let counter = 0;
+setInterval(()=>{
+  counter++;
+  counterDiv.textContent = counter;
+}, 600);
 
-leaderBtn.onclick = async ()=>{
-  if(isLeader){
-    clearInterval(localInterval);
-    localInterval = null;
-    await set(leaderRef, null);
-  } else {
-    await set(leaderRef, clientId);
-    startCounter();
-  }
-};
+// ===== Stream Reference =====
+const streamRef = ref(db, "chatStream");
 
-// ================= Counter =================
-onValue(counterRef, snap=>{
-  if(snap.val() !== null){
-    counterDiv.textContent = snap.val();
-  }
-});
+// ===== استقبال الرسائل =====
+onChildAdded(streamRef, snap=>{
+  const msg = snap.val();
+  const div = document.createElement("div");
 
-function startCounter(){
-  if(localInterval) return;
-  localInterval = setInterval(async ()=>{
-    const v = parseInt(counterDiv.textContent || "0", 10) + 1;
-    await set(counterRef, v);
-  }, 600);
-}
+  if(msg.type === "text"){
+    div.textContent = msg.text;
+  } else if(msg.type === "file"){
+    const blob = new Blob([new Uint8Array(msg.data)], { type: msg.fileType || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
 
-// ================= Numeric Stream (READER) =================
-onValue(streamRef, snap=>{
-  const data = snap.val() || {};
-  const ticks = Object.keys(data).sort((a,b)=>{
-    return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
-  });
-
-  let textOut = "";
-  const bytes = [];
-
-  ticks.forEach(t=>{
-    const v = data[t];
-    if(v <= 255){
-      bytes.push(v);
+    if(msg.fileType.startsWith("image/")){
+      const img = document.createElement("img");
+      img.src = url;
+      div.appendChild(img);
+    } else if(msg.fileType.startsWith("video/")){
+      const vid = document.createElement("video");
+      vid.src = url;
+      vid.controls = true;
+      div.appendChild(vid);
+    } else if(msg.fileType.startsWith("audio/")){
+      const aud = document.createElement("audio");
+      aud.src = url;
+      aud.controls = true;
+      div.appendChild(aud);
     } else {
-      textOut += String.fromCharCode(v);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = msg.fileName || "file.bin";
+      a.textContent = "⬇ تحميل الملف";
+      div.appendChild(a);
     }
-  });
-
-  chatDiv.innerHTML = "";
-
-  if(textOut){
-    chatDiv.textContent = textOut;
   }
 
-  if(bytes.length){
-    const blob = new Blob([new Uint8Array(bytes)], { type:"image/png" });
-    const img = document.createElement("img");
-    img.src = URL.createObjectURL(blob);
-    chatDiv.appendChild(img);
-  }
-
+  chatDiv.appendChild(div);
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
 
-// ================= Send Text =================
-document.getElementById("sendBtn").onclick = async ()=>{
-  const value = input.value;
-  if(!value) return;
-
-  let tick = parseInt(counterDiv.textContent || "0", 10);
-  for(const ch of value){
-    tick++;
-    await set(ref(db, `temporal/stream/tick_${tick}`), ch.charCodeAt(0));
-    await set(counterRef, tick);
-  }
+// ===== إرسال نص =====
+sendBtn.onclick = async ()=>{
+  const text = input.value.trim();
+  if(!text) return;
+  await push(streamRef, { type:"text", text });
   input.value = "";
 };
 
-// ================= Send File =================
-document.getElementById("fileBtn").onclick = ()=>{
+// ===== إرسال ملفات =====
+fileBtn.onclick = ()=>{
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.onchange = async e=>{
@@ -224,25 +161,18 @@ document.getElementById("fileBtn").onclick = ()=>{
     const reader = new FileReader();
     reader.onload = async evt=>{
       const arr = new Uint8Array(evt.target.result);
-      let tick = parseInt(counterDiv.textContent || "0", 10);
-      for(const b of arr){
-        tick++;
-        await set(ref(db, `temporal/stream/tick_${tick}`), b);
-        await set(counterRef, tick);
-      }
+      await push(streamRef, {
+        type:"file",
+        fileName:file.name,
+        fileType:file.type,
+        data:Array.from(arr)
+      });
     };
     reader.readAsArrayBuffer(file);
   };
   fileInput.click();
 };
 
-// ================= Clear =================
-document.getElementById("clearBtn").onclick = async ()=>{
-  await set(streamRef, null);
-  await set(counterRef, 0);
-  chatDiv.innerHTML = "";
-};
 </script>
-
 </body>
 </html>
