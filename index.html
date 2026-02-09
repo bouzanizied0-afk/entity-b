@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - الصور تلقائيًا</title>
+<title>⏳ Temporal Numeric Stream - النسخة المتقدمة</title>
 <style>
 body {
   background:#000;
@@ -11,13 +11,13 @@ body {
   text-align:center;
   padding-top:20px;
 }
-#counter { font-size:64px; margin:20px; }
+#counter, #sendCounter { font-size:48px; margin:10px; }
 #chat {
   font-size:22px;
   color:#ff0;
   margin:20px auto;
   width:80%;
-  max-height:300px;
+  max-height:400px;
   overflow-y:auto;
   text-align:left;
   border:1px solid #0f0;
@@ -43,20 +43,21 @@ img, video {
 </head>
 <body>
 
-<h2>⏳ بث عددي زمني - الصور تلقائيًا</h2>
-<div id="counter">0</div>
+<h2>⏳ بث رقمي مزدوج - النسخة المتقدمة</h2>
+<div>العداد للتزامن: <span id="counter">0</span></div>
+<div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div>
 
 <div id="chat"></div>
 
 <input id="input" placeholder="اكتب أي شيء">
-<button id="sendBtn">إرسال</button>
+<button id="sendBtn">إرسال نص</button>
 <button id="fileBtn">إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
 <button id="leaderBtn">▶ تشغيل العداد</button>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 // ================= Firebase =================
 const firebaseConfig = {
@@ -72,12 +73,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const counterRef = ref(db, "temporal/counter");
+// ================= Firebase Paths =================
+const counterRef = ref(db, "temporal/counter");       // العداد القديم للتزامن
+const sendTickRef = ref(db, "temporal/sendTick");    // العداد الثاني السريع للإرسال
 const leaderRef  = ref(db, "temporal/leader");
 const streamRef  = ref(db, "temporal/stream");
 
 // ================= DOM =================
 const counterDiv = document.getElementById("counter");
+const sendCounterDiv = document.getElementById("sendCounter");
 const chatDiv = document.getElementById("chat");
 const input = document.getElementById("input");
 const leaderBtn = document.getElementById("leaderBtn");
@@ -91,7 +95,7 @@ if(!sessionStorage.getItem("clientId")){
 }
 const clientId = sessionStorage.getItem("clientId");
 
-// ================= Leader =================
+// ================= Leader Control =================
 onValue(leaderRef, snap=>{
   isLeader = snap.val() === clientId;
   leaderBtn.textContent = isLeader ? "⏸ إيقاف العداد" : "▶ تشغيل العداد";
@@ -108,7 +112,7 @@ leaderBtn.onclick = async ()=>{
   }
 };
 
-// ================= Counter =================
+// ================= Counter (التزامن) =================
 onValue(counterRef, snap=>{
   if(snap.val() !== null){
     counterDiv.textContent = snap.val();
@@ -123,7 +127,7 @@ function startCounter(){
   }, 600);
 }
 
-// ================= Numeric Stream (READER) =================
+// ================= Numeric Stream Reader =================
 onValue(streamRef, snap=>{
   const data = snap.val() || {};
   const ticks = Object.keys(data).sort((a,b)=>{
@@ -143,20 +147,24 @@ onValue(streamRef, snap=>{
   });
 
   chatDiv.innerHTML = "";
-  if(textOut) {
-    chatDiv.textContent = textOut;
-  }
+  if(textOut) chatDiv.textContent = textOut;
 
   if(bytes.length > 0){
-    // نوع الصورة الأصلي سيحدد العرض التلقائي
-    const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+    const blob = new Blob([new Uint8Array(bytes)]);
     const url = URL.createObjectURL(blob);
 
-    const img = document.createElement("img");
-    img.src = url;
-    chatDiv.appendChild(img); // العرض مباشر في الدردشة
+    // نوع الملف تلقائي
+    if(url.endsWith(".mp4") || bytes[0]===0x00){
+      const video = document.createElement("video");
+      video.src = url;
+      video.controls = true;
+      chatDiv.appendChild(video);
+    } else {
+      const img = document.createElement("img");
+      img.src = url;
+      chatDiv.appendChild(img);
+    }
   }
-
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
 
@@ -165,19 +173,19 @@ document.getElementById("sendBtn").onclick = async ()=>{
   const value = input.value;
   if(!value) return;
 
-  let tick = parseInt(counterDiv.textContent || "0", 10);
+  let sendTick = parseInt(sendCounterDiv.textContent || "0", 10);
 
   for(const ch of value){
-    tick++;
+    sendTick++;
     const code = ch.charCodeAt(0);
-    await set(ref(db, `temporal/stream/tick_${tick}`), code);
-    await set(counterRef, tick);
+    await set(ref(db, `temporal/sendTick/tick_${sendTick}`), code);
+    sendCounterDiv.textContent = sendTick;
   }
 
   input.value = "";
 };
 
-// ================= Send File (PURE BYTES) =================
+// ================= Send File (Fast Byte Stream) =================
 document.getElementById("fileBtn").onclick = ()=>{
   const fileInput = document.createElement("input");
   fileInput.type = "file";
@@ -188,12 +196,13 @@ document.getElementById("fileBtn").onclick = ()=>{
     const reader = new FileReader();
     reader.onload = async evt=>{
       const arr = new Uint8Array(evt.target.result);
-      let tick = parseInt(counterDiv.textContent || "0", 10);
+      let sendTick = parseInt(sendCounterDiv.textContent || "0", 10);
 
+      // إرسال بايتات بأقصى سرعة ممكنة
       for(const byte of arr){
-        tick++;
-        await set(ref(db, `temporal/stream/tick_${tick}`), byte);
-        await set(counterRef, tick);
+        sendTick++;
+        await set(ref(db, `temporal/sendTick/tick_${sendTick}`), byte);
+        sendCounterDiv.textContent = sendTick;
       }
     };
     reader.readAsArrayBuffer(file);
@@ -201,12 +210,62 @@ document.getElementById("fileBtn").onclick = ()=>{
   fileInput.click();
 };
 
+// ================= Fast Reader =================
+onValue(sendTickRef, snap=>{
+  const data = snap.val() || {};
+  const ticks = Object.keys(data).sort((a,b)=>{
+    return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
+  });
+
+  let textOut = "";
+  const bytes = [];
+
+  ticks.forEach(t=>{
+    const v = data[t];
+    if(v <= 255){
+      bytes.push(v);
+    } else {
+      textOut += String.fromCharCode(v);
+    }
+  });
+
+  if(textOut) chatDiv.textContent = textOut;
+
+  if(bytes.length > 0){
+    const blob = new Blob([new Uint8Array(bytes)]);
+    const url = URL.createObjectURL(blob);
+
+    const lastByte = bytes[0];
+    if(lastByte===0x00 || arrIncludesMP4(bytes)){
+      const video = document.createElement("video");
+      video.src = url;
+      video.controls = true;
+      chatDiv.appendChild(video);
+    } else {
+      const img = document.createElement("img");
+      img.src = url;
+      chatDiv.appendChild(img);
+    }
+  }
+
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+  sendCounterDiv.textContent = ticks.length > 0 ? ticks[ticks.length-1].split("_")[1] : "0";
+});
+
 // ================= Clear =================
 document.getElementById("clearBtn").onclick = async ()=>{
   await set(streamRef, null);
   await set(counterRef, 0);
+  await set(sendTickRef, null);
+  counterDiv.textContent = "0";
+  sendCounterDiv.textContent = "0";
 };
-</script>
 
+// ================= Utility =================
+function arrIncludesMP4(arr){
+  // تحقق من صيغة MP4 عبر رأس الملف
+  return arr[0]===0x00 && arr[1]===0x00 && arr[2]===0x00 && arr[3]===0x18;
+}
+</script>
 </body>
 </html>
