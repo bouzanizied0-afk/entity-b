@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream</title>
+<title>⏳ Temporal Numeric Stream - الصور تلقائيًا</title>
 <style>
 body {
   background:#000;
@@ -43,7 +43,7 @@ img, video {
 </head>
 <body>
 
-<h2>⏳ بث عددي زمني</h2>
+<h2>⏳ بث عددي زمني - الصور تلقائيًا</h2>
 <div id="counter">0</div>
 
 <div id="chat"></div>
@@ -148,13 +148,13 @@ onValue(streamRef, snap=>{
   }
 
   if(bytes.length > 0){
-    const blob = new Blob([new Uint8Array(bytes)], { type: "image/*" }); // عرض تلقائي للصورة فقط
+    // نوع الصورة الأصلي سيحدد العرض التلقائي
+    const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
     const url = URL.createObjectURL(blob);
 
     const img = document.createElement("img");
     img.src = url;
-    img.onload = ()=> chatDiv.appendChild(img);
-    img.onerror = ()=>{}; // إذا لم تكن صورة، لا يظهر شيء
+    chatDiv.appendChild(img); // العرض مباشر في الدردشة
   }
 
   chatDiv.scrollTop = chatDiv.scrollHeight;
