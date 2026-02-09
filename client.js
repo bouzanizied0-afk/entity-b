@@ -1,70 +1,66 @@
-// --------------------- المرحلة 3 — التفكيك المحلي ---------------------
+// --------------------- إعدادات ---------------------
+const CHUNK_SIZE = 1024 * 4; // 4KB لكل Chunk
+const FIREBASE_URL = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream";
+
+// --------------------- استخراج البايتات ---------------------
 async function extract(file) {
   const buffer = await file.arrayBuffer();
-  return new Uint8Array(buffer); // مصفوفة Bytes
+  return new Uint8Array(buffer);
 }
 
-// --------------------- المرحلة 4 — ربط العداد ---------------------
-function encode(bytes, start = 0) {
-  const out = [];
-  let counter = start;
-
-  for (const b of bytes) {
-    out.push({ counter, value: b });
-    counter++;
+// --------------------- تقسيم إلى Chunks ---------------------
+function chunkBytes(bytes) {
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const chunk = bytes.slice(i, i + CHUNK_SIZE);
+    chunks.push(chunk);
   }
-  return out;
+  return chunks;
 }
 
-// --------------------- المرحلة 5 — الإرسال إلى Firebase ---------------------
-async function sendStream(stream) {
-  const display = document.getElementById("counterDisplay"); // عنصر العدّاد في الواجهة
+// --------------------- إرسال Chunks إلى Firebase ---------------------
+async function sendChunks(chunks, progressCallback) {
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const url = `${FIREBASE_URL}/${i}.json`;
 
-  for (const item of stream) {
-    const url = `https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
-    try {
-      await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item.value)
-      });
+    await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Array.from(chunk))
+    });
 
-      // تحديث قيمة العداد في الواجهة
-      display.textContent = item.counter;
-
-      // نبضة زمنية صغيرة لرؤية الحركة
-      await new Promise(r => setTimeout(r, 5));
-
-    } catch (err) {
-      console.error("فشل الإرسال:", err);
-      alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالخادم");
-      break;
-    }
+    if (progressCallback) progressCallback(i + 1, chunks.length);
   }
-  alert("تم الإرسال رقميًا");
 }
 
-// --------------------- المرحلة 6 — إعادة البناء ---------------------
-async function fetchStream() {
-  const url = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
-  const res = await fetch(url);
+// --------------------- سحب Chunks وإعادة البناء ---------------------
+async function fetchChunks() {
+  const res = await fetch(`${FIREBASE_URL}.json`);
   const data = await res.json();
+  if (!data) return [];
 
-  // تحويل من {counter: value, ...} إلى مصفوفة {counter, value}
-  const stream = Object.keys(data).map(key => ({
-    counter: parseInt(key),
-    value: data[key]
-  }));
+  // تحويل كل Chunk إلى Uint8Array
+  const chunks = Object.keys(data)
+    .sort((a, b) => parseInt(a) - parseInt(b))
+    .map(key => new Uint8Array(data[key]));
 
-  return stream;
+  return chunks;
 }
 
-function reconstruct(stream) {
-  stream.sort((a, b) => a.counter - b.counter);
-  return new Uint8Array(stream.map(e => e.value));
+function reconstructFromChunks(chunks) {
+  const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const c of chunks) {
+    result.set(c, offset);
+    offset += c.length;
+  }
+  return result;
 }
 
-function download(bytes, filename = "reconstructed.bin") {
+// --------------------- تنزيل الملف ---------------------
+function downloadFile(bytes, filename = "reconstructed.bin") {
   const blob = new Blob([bytes]);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -72,28 +68,62 @@ function download(bytes, filename = "reconstructed.bin") {
   a.click();
 }
 
-// --------------------- المرحلة 7 — ربط كل شيء ---------------------
+// --------------------- واجهة المستخدم ---------------------
 document.getElementById("send").onclick = async () => {
   const file = document.getElementById("fileInput").files[0];
   if (!file) return alert("اختر ملفاً أولاً");
 
   const bytes = await extract(file);
-  const stream = encode(bytes);
+  const chunks = chunkBytes(bytes);
 
-  // تأكد من وجود عنصر العدّاد في الواجهة
-  if (!document.getElementById("counterDisplay")) {
-    const span = document.createElement("span");
-    span.id = "counterDisplay";
-    span.style.display = "block";
-    span.style.marginTop = "10px";
-    document.body.appendChild(span);
-  }
+  const progressBar = document.getElementById("counterDisplay");
+  progressBar.textContent = `0 / ${chunks.length}`;
 
-  await sendStream(stream);
+  await sendChunks(chunks, (sent, total) => {
+    progressBar.textContent = `${sent} / ${total}`;
+  });
+
+  alert("تم الإرسال بنجاح");
 };
 
 document.getElementById("rebuild").onclick = async () => {
-  const stream = await fetchStream();
-  const bytes = reconstruct(stream);
-  download(bytes);
+  const chunks = await fetchChunks();
+  if (!chunks.length) return alert("لا توجد بيانات لإعادة البناء");
+
+  const bytes = reconstructFromChunks(chunks);
+  downloadFile(bytes, "reconstructed_file.bin");
 };
+
+// --------------------- دردشة نصية ---------------------
+const chatBox = document.getElementById("chatBox");
+const chatInput = document.getElementById("chatInput");
+const chatSend = document.getElementById("chatSend");
+
+chatSend.onclick = async () => {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  const url = `${FIREBASE_URL}/chat.json`;
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, time: Date.now() })
+  });
+  chatInput.value = "";
+};
+
+// --------------------- تحديث الدردشة ---------------------
+async function updateChat() {
+  const res = await fetch(`${FIREBASE_URL}/chat.json`);
+  const data = await res.json();
+  if (!data) return;
+
+  chatBox.innerHTML = "";
+  Object.values(data).forEach(msg => {
+    const div = document.createElement("div");
+    div.textContent = msg.text;
+    chatBox.appendChild(div);
+  });
+}
+
+// تحديث الدردشة كل ثانية
+setInterval(updateChat, 1000);
