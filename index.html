@@ -34,6 +34,12 @@ button {
   border:1px solid #0f0;
 }
 a { color:#0ff; display:block; margin-top:10px; }
+img, video {
+  max-width:100%;
+  display:block;
+  margin-top:10px;
+  border:1px solid #0f0;
+}
 </style>
 </head>
 <body>
@@ -137,18 +143,27 @@ onValue(streamRef, snap=>{
     }
   });
 
-  chatDiv.textContent = textOut;
+  chatDiv.innerHTML = "";
+  if(textOut) {
+    chatDiv.textContent = textOut;
+  }
 
   if(bytes.length > 0){
     const blob = new Blob([new Uint8Array(bytes)]);
     const url = URL.createObjectURL(blob);
 
+    // رابط تحميل دائم
     const link = document.createElement("a");
     link.href = url;
     link.download = "generated.bin";
     link.textContent = "⬇ تحميل الملف المولّد";
-
     chatDiv.appendChild(link);
+
+    // 🔥 محاولة عرض تلقائي كصورة (بدون معرفة النوع)
+    const img = document.createElement("img");
+    img.src = url;
+    img.onload = ()=> chatDiv.appendChild(img);
+    img.onerror = ()=>{}; // إذا لم تكن صورة، لا يحدث شيء
   }
 
   chatDiv.scrollTop = chatDiv.scrollHeight;
