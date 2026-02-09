@@ -33,6 +33,7 @@ button {
   color:#0f0;
   border:1px solid #0f0;
 }
+a { color:#0ff; display:block; margin-top:10px; }
 </style>
 </head>
 <body>
@@ -117,30 +118,43 @@ function startCounter(){
   }, 600);
 }
 
-// ================= Numeric Stream =================
+// ================= Numeric Stream (READER) =================
 onValue(streamRef, snap=>{
   const data = snap.val() || {};
   const ticks = Object.keys(data).sort((a,b)=>{
     return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
   });
 
-  let out = "";
+  let textOut = "";
+  const bytes = [];
+
   ticks.forEach(t=>{
-    const val = data[t];
-    // إذا كان رقم > 255 نفترض أنه حرف
-    if(val <= 255) {
-      // سيتم التعامل معه لاحقًا إذا كان صورة
-      out += ""; 
+    const v = data[t];
+    if(v <= 255){
+      bytes.push(v);
     } else {
-      out += String.fromCharCode(val);
+      textOut += String.fromCharCode(v);
     }
   });
 
-  chatDiv.textContent = out;
+  chatDiv.textContent = textOut;
+
+  if(bytes.length > 0){
+    const blob = new Blob([new Uint8Array(bytes)]);
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "generated.bin";
+    link.textContent = "⬇ تحميل الملف المولّد";
+
+    chatDiv.appendChild(link);
+  }
+
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
 
-// ================= Send =================
+// ================= Send Text =================
 document.getElementById("sendBtn").onclick = async ()=>{
   const value = input.value;
   if(!value) return;
@@ -157,7 +171,7 @@ document.getElementById("sendBtn").onclick = async ()=>{
   input.value = "";
 };
 
-// ================= Send File (Blind) =================
+// ================= Send File (PURE BYTES) =================
 document.getElementById("fileBtn").onclick = ()=>{
   const fileInput = document.createElement("input");
   fileInput.type = "file";
