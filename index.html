@@ -33,7 +33,6 @@ button {
   color:#0f0;
   border:1px solid #0f0;
 }
-a { color:#0ff; display:block; margin-top:10px; }
 img, video {
   max-width:100%;
   display:block;
@@ -149,21 +148,13 @@ onValue(streamRef, snap=>{
   }
 
   if(bytes.length > 0){
-    const blob = new Blob([new Uint8Array(bytes)], { type: "image/*" }); // 🔥 عرض تلقائي للصورة
+    const blob = new Blob([new Uint8Array(bytes)], { type: "image/*" }); // عرض تلقائي للصورة فقط
     const url = URL.createObjectURL(blob);
 
-    // رابط تحميل دائم
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "generated.bin";
-    link.textContent = "⬇ تحميل الملف المولّد";
-    chatDiv.appendChild(link);
-
-    // عرض تلقائي كصورة
     const img = document.createElement("img");
     img.src = url;
     img.onload = ()=> chatDiv.appendChild(img);
-    img.onerror = ()=>{}; // إذا لم تكن صورة، لا يحدث شيء
+    img.onerror = ()=>{}; // إذا لم تكن صورة، لا يظهر شيء
   }
 
   chatDiv.scrollTop = chatDiv.scrollHeight;
