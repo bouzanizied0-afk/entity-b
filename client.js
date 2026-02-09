@@ -18,13 +18,21 @@ function encode(bytes, start = 0) {
 
 // --------------------- المرحلة 5 — الإرسال إلى سيرفر Firebase ---------------------
 async function sendStream(stream) {
+  const display = document.getElementById("counterDisplay"); // عنصر العدّاد في الواجهة
   for (const item of stream) {
     const url = `https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
-    await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item.value)
-    });
+    try {
+      await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item.value)
+      });
+      display.textContent = item.counter; // تحديث العدّاد مباشرة
+    } catch (err) {
+      console.error("فشل الإرسال:", err);
+      alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالسيرفر");
+      break;
+    }
   }
 }
 
