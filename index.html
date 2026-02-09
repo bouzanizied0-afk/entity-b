@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - النسخة النهائية</title>
+<title>⏳ Temporal Numeric Stream - نسخة الدمج الفائق النهائي</title>
 <style>
 body { background:#000; color:#0f0; font-family: monospace; text-align:center; padding-top:20px; }
 #counter, #sendCounter { font-size:48px; margin:10px; }
@@ -14,15 +14,13 @@ a { color:#0ff; display:block; margin-top:10px; }
 </style>
 </head>
 <body>
-<h2>⏳ بث رقمي مزدوج - النسخة النهائية (WebRTC + Firebase)</h2>
-
+<h2>⏳ بث رقمي مزدوج - نسخة الدمج الفائق النهائي (WebRTC + Firebase)</h2>
 <div>العداد للتزامن: <span id="counter">0</span></div>
 <div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div>
 <div id="chat"></div>
-
 <input id="input" placeholder="اكتب أي شيء">
-<button id="sendBtn" disabled>إرسال نص</button>
-<button id="fileBtn" disabled>إرسال ملف</button>
+<button id="sendBtn">إرسال نص</button>
+<button id="fileBtn">إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
 <button id="leaderBtn">▶ تشغيل العداد</button>
 
@@ -54,8 +52,6 @@ const sendCounterDiv = document.getElementById("sendCounter");
 const chatDiv = document.getElementById("chat");
 const input = document.getElementById("input");
 const leaderBtn = document.getElementById("leaderBtn");
-const sendBtn = document.getElementById("sendBtn");
-const fileBtn = document.getElementById("fileBtn");
 
 // ===== Client ID =====
 let localInterval = null;
@@ -71,19 +67,12 @@ onValue(leaderRef,snap=>{
   leaderBtn.textContent = isLeader ? "⏸ إيقاف العداد" : "▶ تشغيل العداد";
 });
 leaderBtn.onclick = async()=>{
-  if(isLeader){
-    clearInterval(localInterval); localInterval=null; 
-    await set(leaderRef,null);
-  } else {
-    await set(leaderRef,clientId); 
-    startCounter();
-  }
+  if(isLeader){ clearInterval(localInterval); localInterval=null; await set(leaderRef,null);}
+  else { await set(leaderRef,clientId); startCounter();}
 };
 
 // ===== Counter for synchronization =====
-onValue(counterRef,snap=>{
-  if(snap.val()!==null) counterDiv.textContent = snap.val();
-});
+onValue(counterRef,snap=>{ if(snap.val()!==null) counterDiv.textContent=snap.val(); });
 function startCounter(){
   if(localInterval) return;
   localInterval = setInterval(async()=>{
@@ -95,8 +84,10 @@ function startCounter(){
 // ===== WebRTC Setup =====
 let peerConnection = null;
 let dataChannel = null;
+let dataQueue = []; // الطابور المؤقت للإرسال قبل جاهزية القناة
 let dataChannelReady = false;
-const config = { iceServers:[{urls:"stun:stun.l.google.com:19302"}] };
+
+const config = { iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
 
 async function setupConnection(){
   peerConnection = new RTCPeerConnection(config);
@@ -104,17 +95,12 @@ async function setupConnection(){
   dataChannel.binaryType = "arraybuffer";
 
   dataChannel.onopen = () => {
-    console.log("DataChannel مفتوحة ✅");
     dataChannelReady = true;
-    sendBtn.disabled = false;
-    fileBtn.disabled = false;
-  };
-
-  dataChannel.onclose = () => {
-    console.log("DataChannel مغلقة ❌");
-    dataChannelReady = false;
-    sendBtn.disabled = true;
-    fileBtn.disabled = true;
+    // إرسال أي بيانات في الطابور
+    while(dataQueue.length > 0){
+      const buf = dataQueue.shift();
+      dataChannel.send(buf);
+    }
   };
 
   dataChannel.onmessage = e => detectAndDisplayFile(e.data);
@@ -154,63 +140,86 @@ function detectAndDisplayFile(arrayBuffer){
   const url = URL.createObjectURL(blob);
   let element;
 
-  if(arr[0] === 0x89 && arr[1] === 0x50) element = document.createElement("img"), element.src = url; // PNG
-  else if(arr[0] === 0xFF && arr[1] === 0xD8) element = document.createElement("img"), element.src = url; // JPG
-  else if(arr[0] === 0x47 && arr[1] === 0x49) element = document.createElement("img"), element.src = url; // GIF
-  else if(arr[4] === 0x66 && arr[5] === 0x74) element = document.createElement("video"), element.src = url, element.controls=true, element.autoplay=true; // MP4
-  else if(arr[0] === 0x49 && arr[1] === 0x44) element = document.createElement("audio"), element.src = url, element.controls=true; // MP3
-  else if(arr[0] === 0x52 && arr[1] === 0x49) element = document.createElement("audio"), element.src = url, element.controls=true; // WAV
-  else element = document.createElement("a"), element.href=url, element.download="file.bin", element.textContent="⬇ تحميل الملف";
+  // PNG
+  if(arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47){
+    element = document.createElement("img"); element.src = url;
+  } 
+  // JPG
+  else if(arr[0] === 0xFF && arr[1] === 0xD8){
+    element = document.createElement("img"); element.src = url;
+  } 
+  // GIF
+  else if(arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46){
+    element = document.createElement("img"); element.src = url;
+  } 
+  // MP4
+  else if(arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70){
+    element = document.createElement("video"); element.src = url; element.controls=true; element.autoplay=true;
+  } 
+  // MP3
+  else if(arr[0] === 0x49 && arr[1] === 0x44 && arr[2] === 0x33){
+    element = document.createElement("audio"); element.src = url; element.controls=true;
+  } 
+  // WAV / RIFF
+  else if(arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46){
+    element = document.createElement("audio"); element.src = url; element.controls=true;
+  } 
+  // أي نوع آخر → رابط تحميل
+  else{
+    element = document.createElement("a"); element.href=url; element.download="file.bin"; element.textContent="⬇ تحميل الملف";
+  }
 
   chatDiv.appendChild(element);
   chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
-// ===== Send Data =====
-async function sendDataWebRTC(arrayBuffer){
-  if(dataChannelReady && dataChannel && dataChannel.readyState==="open")
+// ===== Send Data (يدعم الطابور) =====
+function sendDataWebRTC(arrayBuffer){
+  if(dataChannelReady && dataChannel && dataChannel.readyState==="open"){
     dataChannel.send(arrayBuffer);
-  else console.warn("DataChannel غير جاهزة للإرسال ❌");
+  } else {
+    dataQueue.push(arrayBuffer); // إذا لم تفتح القناة بعد
+  }
 }
 
 // ===== Send Text =====
-sendBtn.onclick = ()=>{
+document.getElementById("sendBtn").onclick=()=>{
   const arr = Array.from(input.value).map(ch=>ch.charCodeAt(0));
   sendDataWebRTC(new Uint8Array(arr).buffer);
   input.value="";
 };
 
 // ===== Send File =====
-fileBtn.onclick = ()=>{
+document.getElementById("fileBtn").onclick=()=>{
   const fileInput = document.createElement("input");
   fileInput.type="file";
-  fileInput.onchange = async e=>{
+  fileInput.onchange=async e=>{
     const file = e.target.files[0];
     if(!file) return;
-    const chunkSize = 64*1024;
+    const chunkSize = 64*1024; // 64KB
     for(let i=0;i<file.size;i+=chunkSize){
       const slice = file.slice(i,i+chunkSize);
       const buffer = await slice.arrayBuffer();
-      await sendDataWebRTC(buffer);
+      sendDataWebRTC(buffer);
     }
   };
   fileInput.click();
 };
 
-// ===== Firebase Fast Reader =====
+// ===== Fast Reader Firebase Backup (اختياري) =====
 onValue(sendTickRef,snap=>{
   const data = snap.val()||{};
   sendCounterDiv.textContent = Object.keys(data).length;
 });
 
 // ===== Clear =====
-document.getElementById("clearBtn").onclick = async ()=>{
+document.getElementById("clearBtn").onclick=async()=>{
   await set(streamRef,null);
   await set(counterRef,0);
   await set(sendTickRef,null);
-  counterDiv.textContent = "0";
-  sendCounterDiv.textContent = "0";
-  chatDiv.innerHTML = "";
+  counterDiv.textContent="0";
+  sendCounterDiv.textContent="0";
+  chatDiv.innerHTML="";
 };
 
 // ===== Initialize =====
