@@ -1,14 +1,60 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    #chatBox {
+      width: 100%;
+      height: 300px;
+      border: 1px solid #ccc;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .message {
+      margin: 5px 0;
+    }
+    .message img {
+      max-width: 200px;
+      display: block;
+      margin-top: 5px;
+    }
+    #progressContainer {
+      width: 100%;
+      background-color: #f1f1f1;
+      border: 1px solid #ccc;
+      height: 20px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background-color: #4caf50;
+      text-align: center;
+      color: white;
+      line-height: 20px;
+    }
+  </style>
+</head>
 <body>
-  <h3>اختر ملف لإرساله:</h3>
+  <h3>الدردشة</h3>
+  <div id="chatBox"></div>
+
+  <input type="text" id="chatInput" placeholder="اكتب رسالتك هنا...">
+  <button id="sendMsg">إرسال رسالة</button>
+  <br><br>
+
+  <h3>إرسال ملف</h3>
   <input type="file" id="fileInput"><br><br>
+  <button id="sendFile">إرسال الملف</button>
 
-  <button id="send">Send</button>
-  <button id="rebuild">Rebuild</button>
-
-  <h3>العداد الحالي:</h3>
-  <div id="counterDisplay">0</div>
+  <div id="progressContainer">
+    <div id="progressBar">0%</div>
+  </div>
 
   <script src="client.js"></script>
 </body>
