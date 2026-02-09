@@ -2,38 +2,83 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>شات تقليدي + عداد مستقل</title>
+<title>شات تقليدي كامل + عداد مستقل</title>
 <style>
-body { 
-  background:#000; 
-  color:#0f0; 
-  font-family: monospace; 
-  margin:0; 
-  display:flex; 
-  flex-direction:column; 
-  align-items:center; 
-  padding-top:20px; 
+body {
+  background:#000;
+  color:#0f0;
+  font-family: monospace;
+  margin:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding-top:20px;
 }
-#counter { font-size:32px; margin-bottom:10px; }
-#chatContainer { 
-  width:60%; max-width:600px; min-width:300px; 
-  border:1px solid #0f0; padding:10px; 
-  background:#000; display:flex; flex-direction:column; 
-  height:400px; overflow-y:auto; margin-bottom:10px; 
-  border-radius:5px; 
+#counter {
+  font-size:32px;
+  margin-bottom:10px;
 }
-#chat div { margin-bottom:8px; word-wrap: break-word; }
-#inputArea { display:flex; width:60%; max-width:600px; min-width:300px; gap:5px; margin-top:5px; }
-input[type=text] { flex:1; padding:8px; font-size:16px; }
-button { font-size:16px; padding:6px 12px; background:#003300; color:#0f0; border:1px solid #0f0; cursor:pointer; border-radius:3px; }
-img, video, audio { max-width:200px; max-height:150px; margin-top:5px; border:1px solid #0f0; display:block; border-radius:4px; }
-a.fileLink { color:#0f0; text-decoration:none; display:block; margin-top:5px; }
+#chatContainer {
+  width:60%;
+  max-width:600px;
+  min-width:300px;
+  border:1px solid #0f0;
+  padding:10px;
+  background:#000;
+  display:flex;
+  flex-direction:column;
+  height:400px;
+  overflow-y:auto;
+  margin-bottom:10px;
+  border-radius:5px;
+}
+#chatContainer div {
+  margin-bottom:8px;
+  word-wrap: break-word;
+}
+#inputArea {
+  display:flex;
+  width:60%;
+  max-width:600px;
+  min-width:300px;
+  gap:5px;
+  margin-top:5px;
+}
+input[type=text] {
+  flex:1;
+  padding:8px;
+  font-size:16px;
+}
+button {
+  font-size:16px;
+  padding:6px 12px;
+  background:#003300;
+  color:#0f0;
+  border:1px solid #0f0;
+  cursor:pointer;
+  border-radius:3px;
+}
+img, video, audio {
+  max-width:200px;
+  max-height:150px;
+  margin-top:5px;
+  border:1px solid #0f0;
+  display:block;
+  border-radius:4px;
+  cursor:pointer;
+}
+a.fileLink {
+  color:#0f0;
+  text-decoration:none;
+  display:block;
+  margin-top:5px;
+}
 </style>
 </head>
 <body>
 
 <div id="counter">0</div>
-<div id="chatContainer" id="chat"></div>
+<div id="chatContainer"></div>
 
 <div id="inputArea">
   <input id="input" placeholder="اكتب نص...">
@@ -46,7 +91,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getDatabase, ref, push, onChildAdded, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// Firebase Config
+// ======== Firebase Config ========
 const firebaseConfig = {
   apiKey:"AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain:"setouchi-it.firebaseapp.com",
@@ -60,18 +105,18 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const storage = getStorage(app);
 
-// DOM
+// ======== DOM ========
 const counterDiv = document.getElementById("counter");
 const chatDiv = document.getElementById("chatContainer");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("sendBtn");
 const fileBtn = document.getElementById("fileBtn");
 
-// Firebase Refs
+// ======== Firebase Refs ========
 const streamRef = ref(db, "chatStream");
 const counterRef = ref(db, "temporal/counter");
 
-// Counter
+// ======== Counter مستقل ========
 let localInterval = null;
 function startCounter(){
   if(localInterval) return;
@@ -85,7 +130,7 @@ onValue(counterRef, snap=>{
 });
 startCounter();
 
-// Receive Messages
+// ======== استقبال الرسائل ========
 onChildAdded(streamRef, snap=>{
   const msg = snap.val();
   const div = document.createElement("div");
@@ -94,15 +139,18 @@ onChildAdded(streamRef, snap=>{
     div.textContent = msg.text;
   } else if(msg.type === "file"){
     const ext = msg.fileType.split("/")[0];
+
     if(ext==="image"){
       const img = document.createElement("img");
       img.src = msg.url;
       img.alt = msg.fileName;
+      img.onclick = ()=> window.open(msg.url,"_blank");
       div.appendChild(img);
     } else if(ext==="video"){
       const vid = document.createElement("video");
       vid.src = msg.url;
       vid.controls = true;
+      vid.onclick = ()=> window.open(msg.url,"_blank");
       div.appendChild(vid);
     } else if(ext==="audio"){
       const aud = document.createElement("audio");
@@ -123,7 +171,7 @@ onChildAdded(streamRef, snap=>{
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
 
-// Send Text
+// ======== إرسال نص ========
 sendBtn.onclick = async ()=>{
   const text = input.value.trim();
   if(!text) return;
@@ -131,7 +179,7 @@ sendBtn.onclick = async ()=>{
   input.value="";
 };
 
-// Send File
+// ======== إرسال ملف ========
 fileBtn.onclick = ()=>{
   const fileInput = document.createElement("input");
   fileInput.type = "file";
