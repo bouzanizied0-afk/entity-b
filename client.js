@@ -1,86 +1,77 @@
-// ==================== client.js ====================
-
-// رابط السيرفر الخاص بك
-const SERVER_URL = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/";
-
-// --------------------- مرحلة 1: تفكيك الملف ---------------------
+// --------------------- المرحلة 3 — التفكيك المحلي ---------------------
 async function extract(file) {
   const buffer = await file.arrayBuffer();
   return new Uint8Array(buffer); // مصفوفة Bytes
 }
 
-// --------------------- مرحلة 2: تقسيم إلى Chunks وربط العداد ---------------------
-function encode(bytes, chunkSize = 1024) {
-  const chunks = [];
-  let counter = 0;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const slice = bytes.slice(i, i + chunkSize);
-    chunks.push({ counter, value: Array.from(slice) });
+// --------------------- المرحلة 4 — ربط العداد ---------------------
+function encode(bytes, start = 0) {
+  const out = [];
+  let counter = start;
+
+  for (const b of bytes) {
+    out.push({ counter, value: b });
     counter++;
   }
-  return chunks;
+  return out;
 }
 
-// --------------------- مرحلة 3: إرسال Chunks مع تحديث التقدم ---------------------
-async function sendChunks(chunks) {
-  const progressBar = document.getElementById("progressDisplay");
-  for (const chunk of chunks) {
-    const url = `${SERVER_URL}stream/${chunk.counter}.json`; // هنا نستخدم الرابط الجديد
+// --------------------- المرحلة 5 — الإرسال إلى Firebase ---------------------
+async function sendStream(stream) {
+  // تأكد من وجود عنصر العدّاد، وإذا لم يكن موجودًا أنشئه
+  const display = document.getElementById("counterDisplay") || (() => {
+    const span = document.createElement("span");
+    span.id = "counterDisplay";
+    span.style.display = "block";
+    span.style.marginTop = "10px";
+    document.body.appendChild(span);
+    return span;
+  })();
+
+  for (const item of stream) {
+    const url = `https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
     try {
       await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(chunk.value)
+        body: JSON.stringify(item.value)
       });
 
-      // تحديث شريط التقدم
-      const percent = Math.floor(((chunk.counter + 1) / chunks.length) * 100);
-      if (progressBar) progressBar.textContent = `Progress: ${percent}%`;
+      // تحديث قيمة العدّاد في الواجهة
+      display.textContent = item.counter;
 
-      // نبضة صغيرة لرؤية الحركة
-      await new Promise(r => setTimeout(r, 5));
-
+      // نبضة زمنية صغيرة لرؤية الحركة
+      await new Promise(r => setTimeout(r, 30)); // غيرت من 5 إلى 30 ملّي ثانية
     } catch (err) {
       console.error("فشل الإرسال:", err);
       alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالخادم");
       break;
     }
   }
-  alert("تم الإرسال بنجاح!");
+  alert("تم الإرسال رقميًا");
 }
 
-// --------------------- مرحلة 4: سحب Chunks وإعادة البناء ---------------------
-async function fetchChunks() {
-  const res = await fetch(`${SERVER_URL}stream.json`);
+// --------------------- المرحلة 6 — إعادة البناء ---------------------
+async function fetchStream() {
+  const url = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
+  const res = await fetch(url);
   const data = await res.json();
 
-  if (!data) return [];
-
   // تحويل من {counter: value, ...} إلى مصفوفة {counter, value}
-  const chunks = Object.keys(data).map(key => ({
+  const stream = Object.keys(data).map(key => ({
     counter: parseInt(key),
     value: data[key]
   }));
 
-  // ترتيب حسب الرقم
-  chunks.sort((a, b) => a.counter - b.counter);
-  return chunks;
+  return stream;
 }
 
-function reconstruct(chunks) {
-  const byteArrays = chunks.map(c => Uint8Array.from(c.value));
-  // دمج جميع المصفوفات
-  let totalLength = byteArrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of byteArrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
+function reconstruct(stream) {
+  stream.sort((a, b) => a.counter - b.counter);
+  return new Uint8Array(stream.map(e => e.value));
 }
 
-function downloadFile(bytes, filename = "reconstructed.bin") {
+function download(bytes, filename = "reconstructed.bin") {
   const blob = new Blob([bytes]);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -88,46 +79,19 @@ function downloadFile(bytes, filename = "reconstructed.bin") {
   a.click();
 }
 
-// --------------------- مرحلة 5: ربط الأزرار ---------------------
+// --------------------- المرحلة 7 — ربط كل شيء ---------------------
 document.getElementById("send").onclick = async () => {
   const file = document.getElementById("fileInput").files[0];
   if (!file) return alert("اختر ملفاً أولاً");
 
   const bytes = await extract(file);
-  const chunks = encode(bytes);
+  const stream = encode(bytes);
 
-  // تأكد من وجود عنصر شريط التقدم
-  if (!document.getElementById("progressDisplay")) {
-    const p = document.createElement("div");
-    p.id = "progressDisplay";
-    p.style.marginTop = "10px";
-    document.body.appendChild(p);
-  }
-
-  await sendChunks(chunks);
+  await sendStream(stream);
 };
 
 document.getElementById("rebuild").onclick = async () => {
-  const chunks = await fetchChunks();
-  if (!chunks.length) return alert("لا توجد بيانات لإعادة البناء");
-
-  const bytes = reconstruct(chunks);
-  downloadFile(bytes);
+  const stream = await fetchStream();
+  const bytes = reconstruct(stream);
+  download(bytes);
 };
-
-// --------------------- دعم الرسائل النصية (خانة دردشة) ---------------------
-const chatInput = document.getElementById("chatInput");
-const chatDisplay = document.getElementById("chatDisplay");
-const sendMsgBtn = document.getElementById("sendMsgBtn");
-
-if (sendMsgBtn && chatInput && chatDisplay) {
-  sendMsgBtn.onclick = () => {
-    const text = chatInput.value.trim();
-    if (!text) return;
-    const msg = document.createElement("div");
-    msg.textContent = text;
-    chatDisplay.appendChild(msg);
-    chatInput.value = "";
-    chatDisplay.scrollTop = chatDisplay.scrollHeight;
-  };
-}
