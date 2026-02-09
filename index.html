@@ -149,7 +149,7 @@ onValue(streamRef, snap=>{
   }
 
   if(bytes.length > 0){
-    const blob = new Blob([new Uint8Array(bytes)]);
+    const blob = new Blob([new Uint8Array(bytes)], { type: "image/*" }); // 🔥 عرض تلقائي للصورة
     const url = URL.createObjectURL(blob);
 
     // رابط تحميل دائم
@@ -159,7 +159,7 @@ onValue(streamRef, snap=>{
     link.textContent = "⬇ تحميل الملف المولّد";
     chatDiv.appendChild(link);
 
-    // 🔥 محاولة عرض تلقائي كصورة (بدون معرفة النوع)
+    // عرض تلقائي كصورة
     const img = document.createElement("img");
     img.src = url;
     img.onload = ()=> chatDiv.appendChild(img);
