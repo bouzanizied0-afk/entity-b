@@ -2,22 +2,90 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>شات تقليدية + عداد مستقل</title>
+<title>شات تقليدي + عداد مستقل</title>
 <style>
-body { background:#000; color:#0f0; font-family: monospace; margin:0; display:flex; flex-direction:column; align-items:center; padding-top:20px; }
-#counter { font-size:32px; margin-bottom:10px; }
-#chatContainer { width:60%; max-width:700px; min-width:300px; border:1px solid #0f0; padding:10px; background:#000; display:flex; flex-direction:column; height:400px; overflow-y:auto; }
-#chat div { margin-bottom:8px; }
-#inputArea { display:flex; width:60%; max-width:700px; min-width:300px; gap:5px; margin-top:5px; }
-input[type=text] { flex:1; padding:8px; font-size:16px; }
-button { font-size:16px; padding:6px 12px; background:#003300; color:#0f0; border:1px solid #0f0; cursor:pointer; }
-img, video { max-width:200px; max-height:150px; margin-top:5px; border:1px solid #0f0; display:block; }
+body { 
+  background:#000; 
+  color:#0f0; 
+  font-family: monospace; 
+  margin:0; 
+  display:flex; 
+  flex-direction:column; 
+  align-items:center; 
+  padding-top:20px; 
+}
+
+/* العداد */
+#counter { 
+  font-size:32px; 
+  margin-bottom:10px; 
+}
+
+/* نافذة الشات */
+#chatContainer { 
+  width:60%; 
+  max-width:600px; 
+  min-width:300px; 
+  border:1px solid #0f0; 
+  padding:10px; 
+  background:#000; 
+  display:flex; 
+  flex-direction:column; 
+  height:400px; 
+  overflow-y:auto; 
+  margin-bottom:10px;
+  border-radius:5px;
+}
+
+/* كل رسالة */
+#chat div { 
+  margin-bottom:8px; 
+  word-wrap: break-word;
+}
+
+/* منطقة الإدخال */
+#inputArea { 
+  display:flex; 
+  width:60%; 
+  max-width:600px; 
+  min-width:300px; 
+  gap:5px; 
+  margin-top:5px; 
+}
+
+/* صندوق النص */
+input[type=text] { 
+  flex:1; 
+  padding:8px; 
+  font-size:16px; 
+}
+
+/* الأزرار */
+button { 
+  font-size:16px; 
+  padding:6px 12px; 
+  background:#003300; 
+  color:#0f0; 
+  border:1px solid #0f0; 
+  cursor:pointer; 
+  border-radius:3px;
+}
+
+/* الوسائط */
+img, video, audio { 
+  max-width:200px; 
+  max-height:150px; 
+  margin-top:5px; 
+  border:1px solid #0f0; 
+  display:block; 
+  border-radius:4px;
+}
 </style>
 </head>
 <body>
 
 <div id="counter">0</div>
-<div id="chatContainer"></div>
+<div id="chatContainer" id="chat"></div>
 
 <div id="inputArea">
   <input id="input" placeholder="اكتب نص...">
@@ -30,7 +98,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getDatabase, ref, push, onChildAdded, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// ===== Firebase Config =====
+// ===== إعداد Firebase =====
 const firebaseConfig = {
   apiKey:"AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain:"setouchi-it.firebaseapp.com",
@@ -40,6 +108,7 @@ const firebaseConfig = {
   messagingSenderId:"456612217542",
   appId:"1:456612217542:web:51d963523b1306e0bf4dc7"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const storage = getStorage(app);
@@ -51,15 +120,15 @@ const input = document.getElementById("input");
 const sendBtn = document.getElementById("sendBtn");
 const fileBtn = document.getElementById("fileBtn");
 
-// ===== Refs =====
+// ===== Firebase Refs =====
 const streamRef = ref(db, "chatStream");
 const counterRef = ref(db, "temporal/counter");
 
-// ===== Counter =====
+// ===== العداد المستقل =====
 let localInterval = null;
 function startCounter(){
   if(localInterval) return;
-  localInterval = setInterval(async()=>{
+  localInterval = setInterval(async ()=>{
     const v = parseInt(counterDiv.textContent||"0",10)+1;
     await set(counterRef, v);
   }, 600);
@@ -69,7 +138,7 @@ onValue(counterRef, snap=>{
 });
 startCounter();
 
-// ===== Receive Messages =====
+// ===== استقبال الرسائل =====
 onChildAdded(streamRef, snap=>{
   const msg = snap.val();
   const div = document.createElement("div");
@@ -105,7 +174,7 @@ onChildAdded(streamRef, snap=>{
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
 
-// ===== Send Text =====
+// ===== إرسال نص =====
 sendBtn.onclick = async ()=>{
   const text = input.value.trim();
   if(!text) return;
@@ -113,10 +182,10 @@ sendBtn.onclick = async ()=>{
   input.value="";
 };
 
-// ===== Send File =====
+// ===== إرسال ملف =====
 fileBtn.onclick = ()=>{
   const fileInput = document.createElement("input");
-  fileInput.type="file";
+  fileInput.type = "file";
   fileInput.onchange = async e=>{
     const file = e.target.files[0];
     if(!file) return;
