@@ -1,8 +1,7 @@
-<!DOCTYPE html>
-<html lang="ar">
+<!DOCTYPE html><html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - النسخة المتقدمة</title>
+<title>⏳ Temporal Numeric Stream - النسخة المتقدمة جدا</title>
 <style>
 body {
   background:#000;
@@ -41,21 +40,13 @@ img, video {
 }
 </style>
 </head>
-<body>
-
-<h2>⏳ بث رقمي مزدوج - النسخة المتقدمة</h2>
+<body><h2>⏳ بث رقمي مزدوج - النسخة المتقدمة جدًا</h2>
 <div>العداد للتزامن: <span id="counter">0</span></div>
-<div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div>
-
-<div id="chat"></div>
-
-<input id="input" placeholder="اكتب أي شيء">
+<div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div><div id="chat"></div><input id="input" placeholder="اكتب أي شيء">
 <button id="sendBtn">إرسال نص</button>
 <button id="fileBtn">إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
-<button id="leaderBtn">▶ تشغيل العداد</button>
-
-<script type="module">
+<button id="leaderBtn">▶ تشغيل العداد</button><script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
@@ -127,23 +118,18 @@ function startCounter(){
   }, 600);
 }
 
-// ================= Numeric Stream Reader =================
+// ================= Numeric Stream Reader (القديم) =================
 onValue(streamRef, snap=>{
   const data = snap.val() || {};
-  const ticks = Object.keys(data).sort((a,b)=>{
-    return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
-  });
+  const ticks = Object.keys(data).sort((a,b)=>parseInt(a.split("_")[1])-parseInt(b.split("_")[1]));
 
   let textOut = "";
   const bytes = [];
 
   ticks.forEach(t=>{
     const v = data[t];
-    if(v <= 255){
-      bytes.push(v);
-    } else {
-      textOut += String.fromCharCode(v);
-    }
+    if(v <= 255){ bytes.push(v); }
+    else { textOut += String.fromCharCode(v); }
   });
 
   chatDiv.innerHTML = "";
@@ -152,21 +138,27 @@ onValue(streamRef, snap=>{
   if(bytes.length > 0){
     const blob = new Blob([new Uint8Array(bytes)]);
     const url = URL.createObjectURL(blob);
-
-    // نوع الملف تلقائي
-    if(url.endsWith(".mp4") || bytes[0]===0x00){
-      const video = document.createElement("video");
-      video.src = url;
-      video.controls = true;
-      chatDiv.appendChild(video);
-    } else {
-      const img = document.createElement("img");
-      img.src = url;
-      chatDiv.appendChild(img);
-    }
+    const img = document.createElement("img");
+    img.src = url;
+    chatDiv.appendChild(img);
   }
   chatDiv.scrollTop = chatDiv.scrollHeight;
 });
+
+// ================= Web Worker لتحسين سرعة الإرسال =================
+const workerCode = `
+self.onmessage = async function(e){
+  const {dataArray, startTick} = e.data;
+  let tick = startTick;
+  for(const byte of dataArray){
+    tick++;
+    self.postMessage({tick, byte});
+  }
+  self.postMessage({done:true, lastTick:tick});
+};
+`;
+const blobWorker = new Blob([workerCode], {type:'application/javascript'});
+const workerURL = URL.createObjectURL(blobWorker);
 
 // ================= Send Text =================
 document.getElementById("sendBtn").onclick = async ()=>{
@@ -174,36 +166,46 @@ document.getElementById("sendBtn").onclick = async ()=>{
   if(!value) return;
 
   let sendTick = parseInt(sendCounterDiv.textContent || "0", 10);
+  const dataArray = Array.from(value).map(ch=>ch.charCodeAt(0));
 
-  for(const ch of value){
-    sendTick++;
-    const code = ch.charCodeAt(0);
-    await set(ref(db, `temporal/sendTick/tick_${sendTick}`), code);
-    sendCounterDiv.textContent = sendTick;
-  }
+  const worker = new Worker(workerURL);
+  worker.postMessage({dataArray, startTick:sendTick});
+  worker.onmessage = async (e)=>{
+    if(e.data.done){
+      sendCounterDiv.textContent = e.data.lastTick;
+      worker.terminate();
+    } else {
+      await set(ref(db, `temporal/sendTick/tick_${e.data.tick}`), e.data.byte);
+      sendCounterDiv.textContent = e.data.tick;
+    }
+  };
 
   input.value = "";
 };
 
-// ================= Send File (Fast Byte Stream) =================
+// ================= Send File =================
 document.getElementById("fileBtn").onclick = ()=>{
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.onchange = async e=>{
     const file = e.target.files[0];
     if(!file) return;
-
     const reader = new FileReader();
     reader.onload = async evt=>{
       const arr = new Uint8Array(evt.target.result);
       let sendTick = parseInt(sendCounterDiv.textContent || "0", 10);
 
-      // إرسال بايتات بأقصى سرعة ممكنة
-      for(const byte of arr){
-        sendTick++;
-        await set(ref(db, `temporal/sendTick/tick_${sendTick}`), byte);
-        sendCounterDiv.textContent = sendTick;
-      }
+      const worker = new Worker(workerURL);
+      worker.postMessage({dataArray:arr, startTick:sendTick});
+      worker.onmessage = async (e)=>{
+        if(e.data.done){
+          sendCounterDiv.textContent = e.data.lastTick;
+          worker.terminate();
+        } else {
+          await set(ref(db, `temporal/sendTick/tick_${e.data.tick}`), e.data.byte);
+          sendCounterDiv.textContent = e.data.tick;
+        }
+      };
     };
     reader.readAsArrayBuffer(file);
   };
@@ -213,43 +215,27 @@ document.getElementById("fileBtn").onclick = ()=>{
 // ================= Fast Reader =================
 onValue(sendTickRef, snap=>{
   const data = snap.val() || {};
-  const ticks = Object.keys(data).sort((a,b)=>{
-    return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
-  });
+  const ticks = Object.keys(data).sort((a,b)=>parseInt(a.split("_")[1])-parseInt(b.split("_")[1]));
 
   let textOut = "";
   const bytes = [];
 
   ticks.forEach(t=>{
     const v = data[t];
-    if(v <= 255){
-      bytes.push(v);
-    } else {
-      textOut += String.fromCharCode(v);
-    }
+    if(v <= 255){ bytes.push(v); }
+    else { textOut += String.fromCharCode(v); }
   });
 
   if(textOut) chatDiv.textContent = textOut;
-
   if(bytes.length > 0){
     const blob = new Blob([new Uint8Array(bytes)]);
     const url = URL.createObjectURL(blob);
-
-    const lastByte = bytes[0];
-    if(lastByte===0x00 || arrIncludesMP4(bytes)){
-      const video = document.createElement("video");
-      video.src = url;
-      video.controls = true;
-      chatDiv.appendChild(video);
-    } else {
-      const img = document.createElement("img");
-      img.src = url;
-      chatDiv.appendChild(img);
-    }
+    const img = document.createElement("img");
+    img.src = url;
+    chatDiv.appendChild(img);
   }
-
   chatDiv.scrollTop = chatDiv.scrollHeight;
-  sendCounterDiv.textContent = ticks.length > 0 ? ticks[ticks.length-1].split("_")[1] : "0";
+  sendCounterDiv.textContent = ticks.length>0 ? ticks[ticks.length-1].split("_")[1] : "0";
 });
 
 // ================= Clear =================
@@ -260,12 +246,5 @@ document.getElementById("clearBtn").onclick = async ()=>{
   counterDiv.textContent = "0";
   sendCounterDiv.textContent = "0";
 };
-
-// ================= Utility =================
-function arrIncludesMP4(arr){
-  // تحقق من صيغة MP4 عبر رأس الملف
-  return arr[0]===0x00 && arr[1]===0x00 && arr[2]===0x00 && arr[3]===0x18;
-}
-</script>
-</body>
+</script></body>
 </html>
