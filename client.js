@@ -21,18 +21,23 @@ async function sendStream(stream) {
   const display = document.getElementById("counterDisplay"); // عنصر العدّاد في الواجهة
 
   for (const item of stream) {
-    const url = `https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
+    const url = `https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
     try {
-      // Firebase يحتاج PUT لكل مسار محدد أو POST لمفتاح تلقائي
       await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item.value)
       });
-      display.textContent = `إرسال الرقم: ${item.counter}`; // تحديث العدّاد مباشرة
+
+      // تحديث قيمة العداد في الواجهة
+      display.textContent = item.counter;
+
+      // نبضة زمنية صغيرة لرؤية الحركة
+      await new Promise(r => setTimeout(r, 5));
+
     } catch (err) {
       console.error("فشل الإرسال:", err);
-      alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالسيرفر");
+      alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالخادم");
       break;
     }
   }
@@ -41,10 +46,10 @@ async function sendStream(stream) {
 
 // --------------------- المرحلة 6 — إعادة البناء ---------------------
 async function fetchStream() {
-  const url = "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
+  const url = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
   const res = await fetch(url);
   const data = await res.json();
-  
+
   // تحويل من {counter: value, ...} إلى مصفوفة {counter, value}
   const stream = Object.keys(data).map(key => ({
     counter: parseInt(key),
@@ -75,7 +80,7 @@ document.getElementById("send").onclick = async () => {
   const bytes = await extract(file);
   const stream = encode(bytes);
 
-  // إضافة عنصر عدّاد للواجهة إذا لم يكن موجود
+  // تأكد من وجود عنصر العدّاد في الواجهة
   if (!document.getElementById("counterDisplay")) {
     const span = document.createElement("span");
     span.id = "counterDisplay";
