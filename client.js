@@ -16,30 +16,32 @@ function encode(bytes, start = 0) {
   return out;
 }
 
-// --------------------- المرحلة 5 — الإرسال إلى سيرفر Firebase ---------------------
+// --------------------- المرحلة 5 — الإرسال إلى Firebase ---------------------
 async function sendStream(stream) {
   const display = document.getElementById("counterDisplay"); // عنصر العدّاد في الواجهة
+
   for (const item of stream) {
-    databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+    const url = `https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
     try {
+      // Firebase يحتاج PUT لكل مسار محدد أو POST لمفتاح تلقائي
       await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item.value)
       });
-      display.textContent = item.counter; // تحديث العدّاد مباشرة
-      await new Promise(r => setTimeout(r, 5)); // نبضة زمنية صغيرة لرؤية العدّاد يتحرك
+      display.textContent = `إرسال الرقم: ${item.counter}`; // تحديث العدّاد مباشرة
     } catch (err) {
       console.error("فشل الإرسال:", err);
       alert("حدث خطأ أثناء الإرسال، تحقق من الاتصال بالسيرفر");
       break;
     }
   }
+  alert("تم الإرسال رقميًا");
 }
 
 // --------------------- المرحلة 6 — إعادة البناء ---------------------
 async function fetchStream() {
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  const url = "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
   const res = await fetch(url);
   const data = await res.json();
   
@@ -69,11 +71,20 @@ function download(bytes, filename = "reconstructed.bin") {
 document.getElementById("send").onclick = async () => {
   const file = document.getElementById("fileInput").files[0];
   if (!file) return alert("اختر ملفاً أولاً");
-  
+
   const bytes = await extract(file);
   const stream = encode(bytes);
+
+  // إضافة عنصر عدّاد للواجهة إذا لم يكن موجود
+  if (!document.getElementById("counterDisplay")) {
+    const span = document.createElement("span");
+    span.id = "counterDisplay";
+    span.style.display = "block";
+    span.style.marginTop = "10px";
+    document.body.appendChild(span);
+  }
+
   await sendStream(stream);
-  alert("تم الإرسال رقميًا");
 };
 
 document.getElementById("rebuild").onclick = async () => {
