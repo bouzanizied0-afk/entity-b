@@ -2,228 +2,247 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - نسخة الدمج الفائق النهائي</title>
+<title>⏳ Temporal Numeric Stream - الصور تلقائيًا</title>
+
 <style>
-body { background:#000; color:#0f0; font-family: monospace; text-align:center; padding-top:20px; }
-#counter, #sendCounter { font-size:48px; margin:10px; }
-#chat { font-size:22px; color:#ff0; margin:20px auto; width:80%; max-height:500px; overflow-y:auto; text-align:left; border:1px solid #0f0; padding:10px; white-space:pre-wrap; }
-input[type=text] { width:50%; font-size:18px; padding:8px; }
-button { font-size:16px; padding:8px 16px; margin:5px; background:#003300; color:#0f0; border:1px solid #0f0; }
-img, video, audio { max-width:100%; display:block; margin-top:10px; border:1px solid #0f0; }
-a { color:#0ff; display:block; margin-top:10px; }
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:#000;
+  color:#0f0;
+  font-family: monospace;
+  display: flex;
+  flex-direction: column;
+}
+
+/* العنوان */
+h2 {
+  margin: 10px 0;
+  text-align: center;
+}
+
+/* العداد */
+#counter {
+  font-size:48px;
+  text-align:center;
+  margin-bottom:10px;
+}
+
+/* الدردشة — تملأ الشاشة */
+#chat {
+  flex: 1;
+  font-size:18px;
+  color:#ff0;
+  width: 100%;
+  overflow-y:auto;
+  border-top:1px solid #0f0;
+  border-bottom:1px solid #0f0;
+  padding:10px;
+  white-space:pre-wrap;
+  box-sizing: border-box;
+}
+
+/* شريط الإدخال */
+#controls {
+  display:flex;
+  gap:6px;
+  padding:8px;
+  border-top:1px solid #0f0;
+}
+
+input[type=text] {
+  flex:1;
+  font-size:16px;
+  padding:6px;
+  background:#000;
+  color:#0f0;
+  border:1px solid #0f0;
+}
+
+button {
+  font-size:14px;
+  padding:6px 10px;
+  background:#003300;
+  color:#0f0;
+  border:1px solid #0f0;
+  cursor:pointer;
+}
+
+img, video {
+  max-width:100%;
+  display:block;
+  margin-top:10px;
+  border:1px solid #0f0;
+}
 </style>
 </head>
+
 <body>
-<h2>⏳ بث رقمي مزدوج - نسخة الدمج الفائق النهائي (WebRTC + Firebase)</h2>
-<div>العداد للتزامن: <span id="counter">0</span></div>
-<div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div>
+
+<h2>⏳ بث عددي زمني - الصور تلقائيًا</h2>
+<div id="counter">0</div>
+
 <div id="chat"></div>
-<input id="input" placeholder="اكتب أي شيء">
-<button id="sendBtn">إرسال نص</button>
-<button id="fileBtn">إرسال ملف</button>
-<button id="clearBtn">🗑 حذف الكل</button>
-<button id="leaderBtn">▶ تشغيل العداد</button>
+
+<div id="controls">
+  <input id="input" placeholder="اكتب أي شيء">
+  <button id="sendBtn">إرسال</button>
+  <button id="fileBtn">📁</button>
+  <button id="clearBtn">🗑</button>
+  <button id="leaderBtn">▶</button>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// ===== Firebase Setup =====
+// ================= Firebase =================
 const firebaseConfig = {
-  apiKey:"AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain:"setouchi-it.firebaseapp.com",
-  databaseURL:"https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId:"setouchi-it",
-  storageBucket:"setouchi-it.appspot.com",
-  messagingSenderId:"456612217542",
-  appId:"1:456612217542:web:51d963523b1306e0bf4dc7"
+  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+  authDomain: "setouchi-it.firebaseapp.com",
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "setouchi-it",
+  storageBucket: "setouchi-it.appspot.com",
+  messagingSenderId: "456612217542",
+  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// ===== DOM =====
-const counterRef = ref(db,"temporal/counter");
-const sendTickRef = ref(db,"temporal/sendTick");
-const leaderRef = ref(db,"temporal/leader");
-const streamRef = ref(db,"temporal/stream");
+const counterRef = ref(db, "temporal/counter");
+const leaderRef  = ref(db, "temporal/leader");
+const streamRef  = ref(db, "temporal/stream");
 
+// ================= DOM =================
 const counterDiv = document.getElementById("counter");
-const sendCounterDiv = document.getElementById("sendCounter");
 const chatDiv = document.getElementById("chat");
 const input = document.getElementById("input");
 const leaderBtn = document.getElementById("leaderBtn");
 
-// ===== Client ID =====
 let localInterval = null;
 let isLeader = false;
+
+// ================= Client ID =================
 if(!sessionStorage.getItem("clientId")){
-  sessionStorage.setItem("clientId","c_"+Date.now()+"_"+Math.random());
+  sessionStorage.setItem("clientId", "c_" + Date.now() + "_" + Math.random());
 }
 const clientId = sessionStorage.getItem("clientId");
 
-// ===== Leader Control =====
-onValue(leaderRef,snap=>{
+// ================= Leader =================
+onValue(leaderRef, snap=>{
   isLeader = snap.val() === clientId;
-  leaderBtn.textContent = isLeader ? "⏸ إيقاف العداد" : "▶ تشغيل العداد";
+  leaderBtn.textContent = isLeader ? "⏸" : "▶";
 });
-leaderBtn.onclick = async()=>{
-  if(isLeader){ clearInterval(localInterval); localInterval=null; await set(leaderRef,null);}
-  else { await set(leaderRef,clientId); startCounter();}
+
+leaderBtn.onclick = async ()=>{
+  if(isLeader){
+    clearInterval(localInterval);
+    localInterval = null;
+    await set(leaderRef, null);
+  } else {
+    await set(leaderRef, clientId);
+    startCounter();
+  }
 };
 
-// ===== Counter for synchronization =====
-onValue(counterRef,snap=>{ if(snap.val()!==null) counterDiv.textContent=snap.val(); });
+// ================= Counter =================
+onValue(counterRef, snap=>{
+  if(snap.val() !== null){
+    counterDiv.textContent = snap.val();
+  }
+});
+
 function startCounter(){
   if(localInterval) return;
-  localInterval = setInterval(async()=>{
-    const v = parseInt(counterDiv.textContent||"0",10)+1;
-    await set(counterRef,v);
-  },600);
+  localInterval = setInterval(async ()=>{
+    const v = parseInt(counterDiv.textContent || "0", 10) + 1;
+    await set(counterRef, v);
+  }, 600);
 }
 
-// ===== WebRTC Setup =====
-let peerConnection = null;
-let dataChannel = null;
-let dataQueue = []; // الطابور المؤقت للإرسال قبل جاهزية القناة
-let dataChannelReady = false;
-
-const config = { iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
-
-async function setupConnection(){
-  peerConnection = new RTCPeerConnection(config);
-  dataChannel = peerConnection.createDataChannel("fastChannel");
-  dataChannel.binaryType = "arraybuffer";
-
-  dataChannel.onopen = () => {
-    dataChannelReady = true;
-    // إرسال أي بيانات في الطابور
-    while(dataQueue.length > 0){
-      const buf = dataQueue.shift();
-      dataChannel.send(buf);
-    }
-  };
-
-  dataChannel.onmessage = e => detectAndDisplayFile(e.data);
-
-  peerConnection.onicecandidate = e => {
-    if(e.candidate) push(ref(db,`temporal/webrtc/${clientId}/ice`),JSON.stringify(e.candidate));
-  };
-
-  // Listen for remote SDP/ICE
-  onValue(ref(db,"temporal/webrtc/offer"),async snap=>{
-    if(!snap.exists()) return;
-    const offer = JSON.parse(snap.val());
-    await peerConnection.setRemoteDescription(offer);
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    await set(ref(db,"temporal/webrtc/answer"),JSON.stringify(answer));
+// ================= Numeric Stream (READER) =================
+onValue(streamRef, snap=>{
+  const data = snap.val() || {};
+  const ticks = Object.keys(data).sort((a,b)=>{
+    return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
   });
 
-  onValue(ref(db,"temporal/webrtc/answer"),async snap=>{
-    if(!snap.exists()) return;
-    const answer = JSON.parse(snap.val());
-    if(!peerConnection.currentRemoteDescription)
-      await peerConnection.setRemoteDescription(answer);
-  });
+  let textOut = "";
+  const bytes = [];
 
-  onValue(ref(db,`temporal/webrtc/${clientId}/ice`),snap=>{
-    if(snap.exists()){
-      Object.values(snap.val()).forEach(c=>peerConnection.addIceCandidate(JSON.parse(c)));
+  ticks.forEach(t=>{
+    const v = data[t];
+    if(v <= 255){
+      bytes.push(v);
+    } else {
+      textOut += String.fromCharCode(v);
     }
   });
-}
 
-// ===== File Detection & Display =====
-function detectAndDisplayFile(arrayBuffer){
-  const arr = new Uint8Array(arrayBuffer);
-  const blob = new Blob([arr]);
-  const url = URL.createObjectURL(blob);
-  let element;
+  chatDiv.innerHTML = "";
 
-  // PNG
-  if(arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47){
-    element = document.createElement("img"); element.src = url;
-  } 
-  // JPG
-  else if(arr[0] === 0xFF && arr[1] === 0xD8){
-    element = document.createElement("img"); element.src = url;
-  } 
-  // GIF
-  else if(arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46){
-    element = document.createElement("img"); element.src = url;
-  } 
-  // MP4
-  else if(arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70){
-    element = document.createElement("video"); element.src = url; element.controls=true; element.autoplay=true;
-  } 
-  // MP3
-  else if(arr[0] === 0x49 && arr[1] === 0x44 && arr[2] === 0x33){
-    element = document.createElement("audio"); element.src = url; element.controls=true;
-  } 
-  // WAV / RIFF
-  else if(arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46){
-    element = document.createElement("audio"); element.src = url; element.controls=true;
-  } 
-  // أي نوع آخر → رابط تحميل
-  else{
-    element = document.createElement("a"); element.href=url; element.download="file.bin"; element.textContent="⬇ تحميل الملف";
+  if(textOut){
+    chatDiv.textContent = textOut;
   }
 
-  chatDiv.appendChild(element);
+  if(bytes.length){
+    const blob = new Blob([new Uint8Array(bytes)], { type:"image/png" });
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(blob);
+    chatDiv.appendChild(img);
+  }
+
   chatDiv.scrollTop = chatDiv.scrollHeight;
-}
+});
 
-// ===== Send Data (يدعم الطابور) =====
-function sendDataWebRTC(arrayBuffer){
-  if(dataChannelReady && dataChannel && dataChannel.readyState==="open"){
-    dataChannel.send(arrayBuffer);
-  } else {
-    dataQueue.push(arrayBuffer); // إذا لم تفتح القناة بعد
+// ================= Send Text =================
+document.getElementById("sendBtn").onclick = async ()=>{
+  const value = input.value;
+  if(!value) return;
+
+  let tick = parseInt(counterDiv.textContent || "0", 10);
+  for(const ch of value){
+    tick++;
+    await set(ref(db, `temporal/stream/tick_${tick}`), ch.charCodeAt(0));
+    await set(counterRef, tick);
   }
-}
-
-// ===== Send Text =====
-document.getElementById("sendBtn").onclick=()=>{
-  const arr = Array.from(input.value).map(ch=>ch.charCodeAt(0));
-  sendDataWebRTC(new Uint8Array(arr).buffer);
-  input.value="";
+  input.value = "";
 };
 
-// ===== Send File =====
-document.getElementById("fileBtn").onclick=()=>{
+// ================= Send File =================
+document.getElementById("fileBtn").onclick = ()=>{
   const fileInput = document.createElement("input");
-  fileInput.type="file";
-  fileInput.onchange=async e=>{
+  fileInput.type = "file";
+  fileInput.onchange = async e=>{
     const file = e.target.files[0];
     if(!file) return;
-    const chunkSize = 64*1024; // 64KB
-    for(let i=0;i<file.size;i+=chunkSize){
-      const slice = file.slice(i,i+chunkSize);
-      const buffer = await slice.arrayBuffer();
-      sendDataWebRTC(buffer);
-    }
+
+    const reader = new FileReader();
+    reader.onload = async evt=>{
+      const arr = new Uint8Array(evt.target.result);
+      let tick = parseInt(counterDiv.textContent || "0", 10);
+      for(const b of arr){
+        tick++;
+        await set(ref(db, `temporal/stream/tick_${tick}`), b);
+        await set(counterRef, tick);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
   fileInput.click();
 };
 
-// ===== Fast Reader Firebase Backup (اختياري) =====
-onValue(sendTickRef,snap=>{
-  const data = snap.val()||{};
-  sendCounterDiv.textContent = Object.keys(data).length;
-});
-
-// ===== Clear =====
-document.getElementById("clearBtn").onclick=async()=>{
-  await set(streamRef,null);
-  await set(counterRef,0);
-  await set(sendTickRef,null);
-  counterDiv.textContent="0";
-  sendCounterDiv.textContent="0";
-  chatDiv.innerHTML="";
+// ================= Clear =================
+document.getElementById("clearBtn").onclick = async ()=>{
+  await set(streamRef, null);
+  await set(counterRef, 0);
+  chatDiv.innerHTML = "";
 };
-
-// ===== Initialize =====
-setupConnection();
 </script>
+
 </body>
 </html>
