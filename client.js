@@ -1,31 +1,14 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
-// ================= Firebase =================
-const firebaseConfig = {
-  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "zied-e3b78",
-  storageBucket: "zied-e3b78.appspot.com",
-  messagingSenderId: "456612217542",
-  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const streamRef = ref(db, "numeric_stream");
-
-// ================= التفكيك المحلي =================
+// --------------------- المرحلة 3 — التفكيك المحلي ---------------------
 async function extract(file) {
   const buffer = await file.arrayBuffer();
-  return new Uint8Array(buffer);
+  return new Uint8Array(buffer); // مصفوفة Bytes
 }
 
-// ================= ربط العداد =================
+// --------------------- المرحلة 4 — ربط العداد ---------------------
 function encode(bytes, start = 0) {
   const out = [];
   let counter = start;
+
   for (const b of bytes) {
     out.push({ counter, value: b });
     counter++;
@@ -33,28 +16,36 @@ function encode(bytes, start = 0) {
   return out;
 }
 
-// ================= الإرسال إلى Firebase =================
+// --------------------- المرحلة 5 — الإرسال إلى سيرفر Firebase ---------------------
 async function sendStream(stream) {
   for (const item of stream) {
-    await set(ref(db, `numeric_stream/tick_${item.counter}`), item.value);
+    const url = `https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream/${item.counter}.json`;
+    await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item.value)
+    });
   }
-  alert("Sent numerically");
 }
 
-// ================= إعادة البناء =================
+// --------------------- المرحلة 6 — إعادة البناء ---------------------
 async function fetchStream() {
-  const snapshot = await get(child(ref(db), 'numeric_stream'));
-  return snapshot.val() || {};
+  const url = "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/stream.json";
+  const res = await fetch(url);
+  const data = await res.json();
+  
+  // تحويل من {counter: value, ...} إلى مصفوفة {counter, value}
+  const stream = Object.keys(data).map(key => ({
+    counter: parseInt(key),
+    value: data[key]
+  }));
+
+  return stream;
 }
 
 function reconstruct(stream) {
-  const keys = Object.keys(stream).sort((a, b) => {
-    const nA = parseInt(a.split("_")[1], 10);
-    const nB = parseInt(b.split("_")[1], 10);
-    return nA - nB;
-  });
-  const bytes = keys.map(k => stream[k]);
-  return new Uint8Array(bytes);
+  stream.sort((a, b) => a.counter - b.counter);
+  return new Uint8Array(stream.map(e => e.value));
 }
 
 function download(bytes, filename = "reconstructed.bin") {
@@ -65,13 +56,15 @@ function download(bytes, filename = "reconstructed.bin") {
   a.click();
 }
 
-// ================= ربط الأزرار =================
+// --------------------- المرحلة 7 — ربط كل شيء ---------------------
 document.getElementById("send").onclick = async () => {
   const file = document.getElementById("fileInput").files[0];
-  if (!file) return alert("اختر ملفًا أولاً");
+  if (!file) return alert("اختر ملفاً أولاً");
+  
   const bytes = await extract(file);
   const stream = encode(bytes);
   await sendStream(stream);
+  alert("تم الإرسال رقميًا");
 };
 
 document.getElementById("rebuild").onclick = async () => {
