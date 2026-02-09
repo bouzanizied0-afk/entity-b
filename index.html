@@ -2,25 +2,27 @@
 <html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - نسخة الدمج الفائق</title>
+<title>⏳ Temporal Numeric Stream - النسخة النهائية</title>
 <style>
 body { background:#000; color:#0f0; font-family: monospace; text-align:center; padding-top:20px; }
 #counter, #sendCounter { font-size:48px; margin:10px; }
 #chat { font-size:22px; color:#ff0; margin:20px auto; width:80%; max-height:500px; overflow-y:auto; text-align:left; border:1px solid #0f0; padding:10px; white-space:pre-wrap; }
 input[type=text] { width:50%; font-size:18px; padding:8px; }
 button { font-size:16px; padding:8px 16px; margin:5px; background:#003300; color:#0f0; border:1px solid #0f0; }
-img, video, audio { max-width:100%; display:block; margin-top:10px; border:1px solid #0f0; cursor:pointer; }
+img, video, audio { max-width:100%; display:block; margin-top:10px; border:1px solid #0f0; }
 a { color:#0ff; display:block; margin-top:10px; }
 </style>
 </head>
 <body>
-<h2>⏳ بث رقمي مزدوج - نسخة الدمج الفائق (WebRTC + Firebase)</h2>
+<h2>⏳ بث رقمي مزدوج - النسخة النهائية (WebRTC + Firebase)</h2>
+
 <div>العداد للتزامن: <span id="counter">0</span></div>
 <div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div>
 <div id="chat"></div>
+
 <input id="input" placeholder="اكتب أي شيء">
-<button id="sendBtn">إرسال نص</button>
-<button id="fileBtn">إرسال ملف</button>
+<button id="sendBtn" disabled>إرسال نص</button>
+<button id="fileBtn" disabled>إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
 <button id="leaderBtn">▶ تشغيل العداد</button>
 
@@ -52,6 +54,8 @@ const sendCounterDiv = document.getElementById("sendCounter");
 const chatDiv = document.getElementById("chat");
 const input = document.getElementById("input");
 const leaderBtn = document.getElementById("leaderBtn");
+const sendBtn = document.getElementById("sendBtn");
+const fileBtn = document.getElementById("fileBtn");
 
 // ===== Client ID =====
 let localInterval = null;
@@ -62,55 +66,65 @@ if(!sessionStorage.getItem("clientId")){
 const clientId = sessionStorage.getItem("clientId");
 
 // ===== Leader Control =====
-function startCounter(){
-  if(localInterval) return;
-  localInterval = setInterval(async()=>{
-    if(!isLeader) return;
-    let v = parseInt(counterDiv.textContent||"0",10) + 1;
-    await set(counterRef,v);
-  },600);
-}
-
-onValue(leaderRef, snap=>{
+onValue(leaderRef,snap=>{
   isLeader = snap.val() === clientId;
   leaderBtn.textContent = isLeader ? "⏸ إيقاف العداد" : "▶ تشغيل العداد";
-
-  // شغل العداد إذا أصبح قائد
-  if(isLeader && !localInterval) startCounter();
-  // أوقف العداد إذا لم يعد قائد
-  if(!isLeader && localInterval){ clearInterval(localInterval); localInterval=null; }
 });
-
 leaderBtn.onclick = async()=>{
   if(isLeader){
     clearInterval(localInterval); localInterval=null; 
     await set(leaderRef,null);
-  } else { 
-    await set(leaderRef,clientId);
+  } else {
+    await set(leaderRef,clientId); 
+    startCounter();
   }
 };
 
-// ===== Counter display =====
+// ===== Counter for synchronization =====
 onValue(counterRef,snap=>{
-  if(snap.val()!==null) counterDiv.textContent=snap.val();
+  if(snap.val()!==null) counterDiv.textContent = snap.val();
 });
+function startCounter(){
+  if(localInterval) return;
+  localInterval = setInterval(async()=>{
+    const v = parseInt(counterDiv.textContent||"0",10)+1;
+    await set(counterRef,v);
+  },600);
+}
 
 // ===== WebRTC Setup =====
 let peerConnection = null;
 let dataChannel = null;
-const config = { iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
+let dataChannelReady = false;
+const config = { iceServers:[{urls:"stun:stun.l.google.com:19302"}] };
 
 async function setupConnection(){
   peerConnection = new RTCPeerConnection(config);
   dataChannel = peerConnection.createDataChannel("fastChannel");
   dataChannel.binaryType = "arraybuffer";
+
+  dataChannel.onopen = () => {
+    console.log("DataChannel مفتوحة ✅");
+    dataChannelReady = true;
+    sendBtn.disabled = false;
+    fileBtn.disabled = false;
+  };
+
+  dataChannel.onclose = () => {
+    console.log("DataChannel مغلقة ❌");
+    dataChannelReady = false;
+    sendBtn.disabled = true;
+    fileBtn.disabled = true;
+  };
+
   dataChannel.onmessage = e => detectAndDisplayFile(e.data);
 
   peerConnection.onicecandidate = e => {
     if(e.candidate) push(ref(db,`temporal/webrtc/${clientId}/ice`),JSON.stringify(e.candidate));
   };
 
-  onValue(ref(db,"temporal/webrtc/offer"), async snap=>{
+  // Listen for remote SDP/ICE
+  onValue(ref(db,"temporal/webrtc/offer"),async snap=>{
     if(!snap.exists()) return;
     const offer = JSON.parse(snap.val());
     await peerConnection.setRemoteDescription(offer);
@@ -119,7 +133,7 @@ async function setupConnection(){
     await set(ref(db,"temporal/webrtc/answer"),JSON.stringify(answer));
   });
 
-  onValue(ref(db,"temporal/webrtc/answer"), async snap=>{
+  onValue(ref(db,"temporal/webrtc/answer"),async snap=>{
     if(!snap.exists()) return;
     const answer = JSON.parse(snap.val());
     if(!peerConnection.currentRemoteDescription)
@@ -140,41 +154,13 @@ function detectAndDisplayFile(arrayBuffer){
   const url = URL.createObjectURL(blob);
   let element;
 
-  // PNG
-  if(arr[0]===0x89 && arr[1]===0x50 && arr[2]===0x4E && arr[3]===0x47)
-    element=document.createElement("img");
-  // JPG
-  else if(arr[0]===0xFF && arr[1]===0xD8)
-    element=document.createElement("img");
-  // GIF
-  else if(arr[0]===0x47 && arr[1]===0x49 && arr[2]===0x46)
-    element=document.createElement("img");
-  // MP4
-  else if(arr[4]===0x66 && arr[5]===0x74 && arr[6]===0x79 && arr[7]===0x70){
-    element=document.createElement("video"); element.controls=true; element.autoplay=true;
-  }
-  // MP3
-  else if(arr[0]===0x49 && arr[1]===0x44 && arr[2]===0x33){
-    element=document.createElement("audio"); element.controls=true;
-  }
-  // WAV / RIFF
-  else if(arr[0]===0x52 && arr[1]===0x49 && arr[2]===0x46 && arr[3]===0x46){
-    element=document.createElement("audio"); element.controls=true;
-  }
-  // أي نوع آخر
-  else{
-    element=document.createElement("a");
-    element.href=url;
-    element.download="file.bin";
-    element.textContent="⬇ تحميل الملف";
-  }
-
-  if(element.tagName!=="A") element.src=url;
-
-  // إضافة ميزة الضغط لعرض/تكبير الصورة
-  if(element.tagName==="IMG" || element.tagName==="VIDEO") {
-    element.onclick = ()=>window.open(url,"_blank");
-  }
+  if(arr[0] === 0x89 && arr[1] === 0x50) element = document.createElement("img"), element.src = url; // PNG
+  else if(arr[0] === 0xFF && arr[1] === 0xD8) element = document.createElement("img"), element.src = url; // JPG
+  else if(arr[0] === 0x47 && arr[1] === 0x49) element = document.createElement("img"), element.src = url; // GIF
+  else if(arr[4] === 0x66 && arr[5] === 0x74) element = document.createElement("video"), element.src = url, element.controls=true, element.autoplay=true; // MP4
+  else if(arr[0] === 0x49 && arr[1] === 0x44) element = document.createElement("audio"), element.src = url, element.controls=true; // MP3
+  else if(arr[0] === 0x52 && arr[1] === 0x49) element = document.createElement("audio"), element.src = url, element.controls=true; // WAV
+  else element = document.createElement("a"), element.href=url, element.download="file.bin", element.textContent="⬇ تحميل الملف";
 
   chatDiv.appendChild(element);
   chatDiv.scrollTop = chatDiv.scrollHeight;
@@ -182,25 +168,26 @@ function detectAndDisplayFile(arrayBuffer){
 
 // ===== Send Data =====
 async function sendDataWebRTC(arrayBuffer){
-  if(dataChannel && dataChannel.readyState==="open")
+  if(dataChannelReady && dataChannel && dataChannel.readyState==="open")
     dataChannel.send(arrayBuffer);
+  else console.warn("DataChannel غير جاهزة للإرسال ❌");
 }
 
 // ===== Send Text =====
-document.getElementById("sendBtn").onclick=()=>{
-  const arr=Array.from(input.value).map(ch=>ch.charCodeAt(0));
+sendBtn.onclick = ()=>{
+  const arr = Array.from(input.value).map(ch=>ch.charCodeAt(0));
   sendDataWebRTC(new Uint8Array(arr).buffer);
   input.value="";
 };
 
 // ===== Send File =====
-document.getElementById("fileBtn").onclick=()=>{
-  const fileInput=document.createElement("input");
+fileBtn.onclick = ()=>{
+  const fileInput = document.createElement("input");
   fileInput.type="file";
-  fileInput.onchange=async e=>{
+  fileInput.onchange = async e=>{
     const file = e.target.files[0];
     if(!file) return;
-    const chunkSize=64*1024; // 64KB
+    const chunkSize = 64*1024;
     for(let i=0;i<file.size;i+=chunkSize){
       const slice = file.slice(i,i+chunkSize);
       const buffer = await slice.arrayBuffer();
@@ -210,20 +197,20 @@ document.getElementById("fileBtn").onclick=()=>{
   fileInput.click();
 };
 
-// ===== Fast Reader Firebase Backup =====
+// ===== Firebase Fast Reader =====
 onValue(sendTickRef,snap=>{
-  const data=snap.val()||{};
-  sendCounterDiv.textContent=Object.keys(data).length;
+  const data = snap.val()||{};
+  sendCounterDiv.textContent = Object.keys(data).length;
 });
 
 // ===== Clear =====
-document.getElementById("clearBtn").onclick=async()=>{
+document.getElementById("clearBtn").onclick = async ()=>{
   await set(streamRef,null);
   await set(counterRef,0);
   await set(sendTickRef,null);
-  counterDiv.textContent="0";
-  sendCounterDiv.textContent="0";
-  chatDiv.innerHTML="";
+  counterDiv.textContent = "0";
+  sendCounterDiv.textContent = "0";
+  chatDiv.innerHTML = "";
 };
 
 // ===== Initialize =====
