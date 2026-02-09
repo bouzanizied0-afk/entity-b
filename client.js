@@ -1,7 +1,7 @@
 // ==================== client.js ====================
 
 // رابط السيرفر الخاص بك
-const SERVER_URL = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app";
+const SERVER_URL = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/";
 
 // --------------------- مرحلة 1: تفكيك الملف ---------------------
 async function extract(file) {
@@ -25,7 +25,7 @@ function encode(bytes, chunkSize = 1024) {
 async function sendChunks(chunks) {
   const progressBar = document.getElementById("progressDisplay");
   for (const chunk of chunks) {
-    const url = `${SERVER_URL}/stream/${chunk.counter}.json`;
+    const url = `${SERVER_URL}stream/${chunk.counter}.json`; // هنا نستخدم الرابط الجديد
     try {
       await fetch(url, {
         method: "PUT",
@@ -51,7 +51,7 @@ async function sendChunks(chunks) {
 
 // --------------------- مرحلة 4: سحب Chunks وإعادة البناء ---------------------
 async function fetchChunks() {
-  const res = await fetch(`${SERVER_URL}/stream.json`);
+  const res = await fetch(`${SERVER_URL}stream.json`);
   const data = await res.json();
 
   if (!data) return [];
