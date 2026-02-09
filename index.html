@@ -1,250 +1,61 @@
 <!DOCTYPE html><html lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>⏳ Temporal Numeric Stream - النسخة المتقدمة جدا</title>
+<title>⏳ Temporal Numeric Stream - نسخة الضوء الفائق + WebRTC</title>
 <style>
-body {
-  background:#000;
-  color:#0f0;
-  font-family: monospace;
-  text-align:center;
-  padding-top:20px;
-}
+body { background:#000; color:#0f0; font-family: monospace; text-align:center; padding-top:20px; }
 #counter, #sendCounter { font-size:48px; margin:10px; }
-#chat {
-  font-size:22px;
-  color:#ff0;
-  margin:20px auto;
-  width:80%;
-  max-height:400px;
-  overflow-y:auto;
-  text-align:left;
-  border:1px solid #0f0;
-  padding:10px;
-  white-space:pre-wrap;
-}
+#chat { font-size:22px; color:#ff0; margin:20px auto; width:80%; max-height:400px; overflow-y:auto; text-align:left; border:1px solid #0f0; padding:10px; white-space:pre-wrap; }
 input[type=text] { width:50%; font-size:18px; padding:8px; }
-button {
-  font-size:16px;
-  padding:8px 16px;
-  margin:5px;
-  background:#003300;
-  color:#0f0;
-  border:1px solid #0f0;
-}
-img, video {
-  max-width:100%;
-  display:block;
-  margin-top:10px;
-  border:1px solid #0f0;
-}
+button { font-size:16px; padding:8px 16px; margin:5px; background:#003300; color:#0f0; border:1px solid #0f0; }
+img, video { max-width:100%; display:block; margin-top:10px; border:1px solid #0f0; }
 </style>
 </head>
-<body><h2>⏳ بث رقمي مزدوج - النسخة المتقدمة جدًا</h2>
+<body>
+<h2>⏳ بث رقمي مزدوج - نسخة الضوء الفائق + WebRTC</h2>
 <div>العداد للتزامن: <span id="counter">0</span></div>
-<div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div><div id="chat"></div><input id="input" placeholder="اكتب أي شيء">
+<div>العداد للإرسال الفوري: <span id="sendCounter">0</span></div>
+<div id="chat"></div>
+<input id="input" placeholder="اكتب أي شيء">
 <button id="sendBtn">إرسال نص</button>
 <button id="fileBtn">إرسال ملف</button>
 <button id="clearBtn">🗑 حذف الكل</button>
-<button id="leaderBtn">▶ تشغيل العداد</button><script type="module">
+<button id="leaderBtn">▶ تشغيل العداد</button>
+<script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";// ===== Firebase Setup ===== const firebaseConfig = { apiKey:"AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y", authDomain:"setouchi-it.firebaseapp.com", databaseURL:"https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/", projectId:"setouchi-it", storageBucket:"setouchi-it.appspot.com", messagingSenderId:"456612217542", appId:"1:456612217542:web:51d963523b1306e0bf4dc7"}; const app = initializeApp(firebaseConfig); const db = getDatabase(app);
 
-// ================= Firebase =================
-const firebaseConfig = {
-  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "setouchi-it",
-  storageBucket: "setouchi-it.appspot.com",
-  messagingSenderId: "456612217542",
-  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
-};
+const counterRef = ref(db,"temporal/counter"); const sendTickRef = ref(db,"temporal/sendTick"); const leaderRef = ref(db,"temporal/leader"); const streamRef = ref(db,"temporal/stream");
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+const counterDiv=document.getElementById("counter"); const sendCounterDiv=document.getElementById("sendCounter"); const chatDiv=document.getElementById("chat"); const input=document.getElementById("input"); const leaderBtn=document.getElementById("leaderBtn");
 
-// ================= Firebase Paths =================
-const counterRef = ref(db, "temporal/counter");       // العداد القديم للتزامن
-const sendTickRef = ref(db, "temporal/sendTick");    // العداد الثاني السريع للإرسال
-const leaderRef  = ref(db, "temporal/leader");
-const streamRef  = ref(db, "temporal/stream");
+let localInterval=null; let isLeader=false; if(!sessionStorage.getItem("clientId")){ sessionStorage.setItem("clientId","c_"+Date.now()+"_"+Math.random());} const clientId=sessionStorage.getItem("clientId");
 
-// ================= DOM =================
-const counterDiv = document.getElementById("counter");
-const sendCounterDiv = document.getElementById("sendCounter");
-const chatDiv = document.getElementById("chat");
-const input = document.getElementById("input");
-const leaderBtn = document.getElementById("leaderBtn");
+onValue(leaderRef, snap=>{ isLeader=snap.val()===clientId; leaderBtn.textContent=isLeader?"⏸ إيقاف العداد":"▶ تشغيل العداد";}); leaderBtn.onclick=async()=>{ if(isLeader){ clearInterval(localInterval); localInterval=null; await set(leaderRef,null);} else{ await set(leaderRef,clientId); startCounter();}}
 
-let localInterval = null;
-let isLeader = false;
+onValue(counterRef,snap=>{ if(snap.val()!==null) counterDiv.textContent=snap.val();}); function startCounter(){ if(localInterval) return; localInterval=setInterval(async()=>{ const v=parseInt(counterDiv.textContent||"0",10)+1; await set(counterRef,v); },600);}
 
-// ================= Client ID =================
-if(!sessionStorage.getItem("clientId")){
-  sessionStorage.setItem("clientId", "c_" + Date.now() + "_" + Math.random());
-}
-const clientId = sessionStorage.getItem("clientId");
+// ===== Stream Reader Old ===== onValue(streamRef,snap=>{ const data=snap.val()||{}; const ticks=Object.keys(data).sort((a,b)=>parseInt(a.split("")[1])-parseInt(b.split("")[1])); let textOut=""; const bytes=[]; ticks.forEach(t=>{ const v=data[t]; if(v<=255) bytes.push(v); else textOut+=String.fromCharCode(v); }); chatDiv.innerHTML=""; if(textOut) chatDiv.textContent=textOut; if(bytes.length>0){ const blob=new Blob([new Uint8Array(bytes)]); const url=URL.createObjectURL(blob); const img=document.createElement("img"); img.src=url; chatDiv.appendChild(img);} chatDiv.scrollTop=chatDiv.scrollHeight; });
 
-// ================= Leader Control =================
-onValue(leaderRef, snap=>{
-  isLeader = snap.val() === clientId;
-  leaderBtn.textContent = isLeader ? "⏸ إيقاف العداد" : "▶ تشغيل العداد";
-});
+// ===== WebRTC Setup ===== let peerConnection=null; let dataChannel=null; const config={ iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
 
-leaderBtn.onclick = async ()=>{
-  if(isLeader){
-    clearInterval(localInterval);
-    localInterval = null;
-    await set(leaderRef, null);
-  } else {
-    await set(leaderRef, clientId);
-    startCounter();
-  }
-};
+async function setupConnection(){ peerConnection=new RTCPeerConnection(config); dataChannel=peerConnection.createDataChannel("fastChannel"); dataChannel.binaryType="arraybuffer"; dataChannel.onmessage=receiveData;
 
-// ================= Counter (التزامن) =================
-onValue(counterRef, snap=>{
-  if(snap.val() !== null){
-    counterDiv.textContent = snap.val();
-  }
-});
+peerConnection.onicecandidate=e=>{ if(e.candidate){ push(ref(db,temporal/webrtc/${clientId}/ice),JSON.stringify(e.candidate)); } };
 
-function startCounter(){
-  if(localInterval) return;
-  localInterval = setInterval(async ()=>{
-    const v = parseInt(counterDiv.textContent || "0", 10) + 1;
-    await set(counterRef, v);
-  }, 600);
-}
+// Listen for remote SDP/ICE onValue(ref(db,temporal/webrtc/offer), async snap=>{ if(!snap.exists()) return; const offer=JSON.parse(snap.val()); await peerConnection.setRemoteDescription(offer); const answer=await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer); await set(ref(db,temporal/webrtc/answer),JSON.stringify(answer)); }); onValue(ref(db,temporal/webrtc/answer), async snap=>{ if(!snap.exists()) return; const answer=JSON.parse(snap.val()); if(!peerConnection.currentRemoteDescription){ await peerConnection.setRemoteDescription(answer); } }); onValue(ref(db,temporal/webrtc/${clientId}/ice),snap=>{ if(snap.exists()){ Object.values(snap.val()).forEach(c=>peerConnection.addIceCandidate(JSON.parse(c))); } }); }
 
-// ================= Numeric Stream Reader (القديم) =================
-onValue(streamRef, snap=>{
-  const data = snap.val() || {};
-  const ticks = Object.keys(data).sort((a,b)=>parseInt(a.split("_")[1])-parseInt(b.split("_")[1]));
+function receiveData(e){ const arr=new Uint8Array(e.data); const blob=new Blob([arr]); const url=URL.createObjectURL(blob); const img=document.createElement("img"); img.src=url; chatDiv.appendChild(img); chatDiv.scrollTop=chatDiv.scrollHeight; }
 
-  let textOut = "";
-  const bytes = [];
+async function sendDataWebRTC(arrayBuffer){ if(dataChannel && dataChannel.readyState=="open"){ dataChannel.send(arrayBuffer); }}
 
-  ticks.forEach(t=>{
-    const v = data[t];
-    if(v <= 255){ bytes.push(v); }
-    else { textOut += String.fromCharCode(v); }
-  });
+// ===== Send Text ===== document.getElementById("sendBtn").onclick=()=>{ const arr=Array.from(input.value).map(ch=>ch.charCodeAt(0)); const buffer=new Uint8Array(arr).buffer; sendDataWebRTC(buffer); input.value=""; };
 
-  chatDiv.innerHTML = "";
-  if(textOut) chatDiv.textContent = textOut;
+// ===== Send File ===== document.getElementById("fileBtn").onclick=()=>{ const fileInput=document.createElement("input"); fileInput.type="file"; fileInput.onchange=async e=>{ const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=async evt=>{ await sendDataWebRTC(evt.target.result); }; reader.readAsArrayBuffer(file); }; fileInput.click(); };
 
-  if(bytes.length > 0){
-    const blob = new Blob([new Uint8Array(bytes)]);
-    const url = URL.createObjectURL(blob);
-    const img = document.createElement("img");
-    img.src = url;
-    chatDiv.appendChild(img);
-  }
-  chatDiv.scrollTop = chatDiv.scrollHeight;
-});
+// ===== Clear ===== document.getElementById("clearBtn").onclick=async()=>{ await set(streamRef,null); await set(counterRef,0); counterDiv.textContent="0"; sendCounterDiv.textContent="0"; };
 
-// ================= Web Worker لتحسين سرعة الإرسال =================
-const workerCode = `
-self.onmessage = async function(e){
-  const {dataArray, startTick} = e.data;
-  let tick = startTick;
-  for(const byte of dataArray){
-    tick++;
-    self.postMessage({tick, byte});
-  }
-  self.postMessage({done:true, lastTick:tick});
-};
-`;
-const blobWorker = new Blob([workerCode], {type:'application/javascript'});
-const workerURL = URL.createObjectURL(blobWorker);
+setupConnection(); </script>
 
-// ================= Send Text =================
-document.getElementById("sendBtn").onclick = async ()=>{
-  const value = input.value;
-  if(!value) return;
-
-  let sendTick = parseInt(sendCounterDiv.textContent || "0", 10);
-  const dataArray = Array.from(value).map(ch=>ch.charCodeAt(0));
-
-  const worker = new Worker(workerURL);
-  worker.postMessage({dataArray, startTick:sendTick});
-  worker.onmessage = async (e)=>{
-    if(e.data.done){
-      sendCounterDiv.textContent = e.data.lastTick;
-      worker.terminate();
-    } else {
-      await set(ref(db, `temporal/sendTick/tick_${e.data.tick}`), e.data.byte);
-      sendCounterDiv.textContent = e.data.tick;
-    }
-  };
-
-  input.value = "";
-};
-
-// ================= Send File =================
-document.getElementById("fileBtn").onclick = ()=>{
-  const fileInput = document.createElement("input");
-  fileInput.type = "file";
-  fileInput.onchange = async e=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = async evt=>{
-      const arr = new Uint8Array(evt.target.result);
-      let sendTick = parseInt(sendCounterDiv.textContent || "0", 10);
-
-      const worker = new Worker(workerURL);
-      worker.postMessage({dataArray:arr, startTick:sendTick});
-      worker.onmessage = async (e)=>{
-        if(e.data.done){
-          sendCounterDiv.textContent = e.data.lastTick;
-          worker.terminate();
-        } else {
-          await set(ref(db, `temporal/sendTick/tick_${e.data.tick}`), e.data.byte);
-          sendCounterDiv.textContent = e.data.tick;
-        }
-      };
-    };
-    reader.readAsArrayBuffer(file);
-  };
-  fileInput.click();
-};
-
-// ================= Fast Reader =================
-onValue(sendTickRef, snap=>{
-  const data = snap.val() || {};
-  const ticks = Object.keys(data).sort((a,b)=>parseInt(a.split("_")[1])-parseInt(b.split("_")[1]));
-
-  let textOut = "";
-  const bytes = [];
-
-  ticks.forEach(t=>{
-    const v = data[t];
-    if(v <= 255){ bytes.push(v); }
-    else { textOut += String.fromCharCode(v); }
-  });
-
-  if(textOut) chatDiv.textContent = textOut;
-  if(bytes.length > 0){
-    const blob = new Blob([new Uint8Array(bytes)]);
-    const url = URL.createObjectURL(blob);
-    const img = document.createElement("img");
-    img.src = url;
-    chatDiv.appendChild(img);
-  }
-  chatDiv.scrollTop = chatDiv.scrollHeight;
-  sendCounterDiv.textContent = ticks.length>0 ? ticks[ticks.length-1].split("_")[1] : "0";
-});
-
-// ================= Clear =================
-document.getElementById("clearBtn").onclick = async ()=>{
-  await set(streamRef, null);
-  await set(counterRef, 0);
-  await set(sendTickRef, null);
-  counterDiv.textContent = "0";
-  sendCounterDiv.textContent = "0";
-};
-</script></body>
+</body>
 </html>
