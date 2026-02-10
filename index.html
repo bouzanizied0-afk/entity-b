@@ -7,7 +7,7 @@
 html,body{margin:0;height:100%;font-family:sans-serif;background:#0a0a0a;color:#eee}
 #chat{display:flex;flex-direction:column;height:100%}
 #msgs{flex:1;overflow:auto;padding:10px}
-.msg{margin:6px 0;padding:8px 12px;border-radius:10px;max-width:70%}
+.msg{margin:6px 0;padding:8px 12px;border-radius:10px;max-width:70%;position:relative}
 .me{background:#00d4ff;color:#000;margin-left:auto}
 .other{background:#222}
 #bar{display:flex;padding:10px;gap:5px;border-top:1px solid #222}
@@ -16,6 +16,8 @@ button{padding:8px 12px;border:none;border-radius:8px;background:#00d4ff;cursor:
 input[type=file]{display:none}
 img{max-width:200px;border-radius:8px}
 a{color:#00d4ff}
+/* زر الحذف */
+.deleteBtn{position:absolute;top:4px;left:4px;width:20px;height:20px;background:#ff4d4d;color:#fff;border:none;border-radius:50%;cursor:pointer;font-weight:bold;line-height:18px;text-align:center;padding:0;}
 </style>
 </head>
 <body>
@@ -35,7 +37,7 @@ import { ref, push, onChildAdded, set, get }
 from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 import { db, PATHS, startHeartbeat } from "./serverCore.js";
-import { StateEngine } from "./engine.js"; // محرك الملفات
+import { enhanceChat } from './chatEnhancer.js'; // إضافة المحرك وزر الحذف
 
 startHeartbeat(); // يبدأ عداد الخادم
 
@@ -45,26 +47,10 @@ const text = document.getElementById("text");
 const file = document.getElementById("file");
 const me = crypto.randomUUID();
 
-// إنشاء محرك الحالة مع ربطه بالخادم
-const engine = new StateEngine({
-    onNewState: async (data) => {
-        // جلب الرقم التالي للعداد
-        const counterSnap = await get(ref(db, PATHS.counter));
-        const nextT = (counterSnap.val() || 0) + 1;
+// --- 1. ربط محرك الصور وزر حذف الرسائل ---
+enhanceChat({ msgsDiv, fileInput: file, me });
 
-        // حفظ الحالة على الخادم
-        await set(ref(db, `${PATHS.stream}/state_${nextT}`), { data, type: data.split(";")[0].replace("data:", "") });
-        await set(ref(db, PATHS.counter), nextT);
-
-        // دفع الرسالة للدردشة
-        push(msgsRef, { type: "img", data, uid: me });
-    },
-    onStatusChange: (status) => {
-        console.log(status);
-    }
-});
-
-// عرض الرسائل الجديدة
+// --- 2. عرض الرسائل الجديدة ---
 function addMsg(html, mine){
   const d=document.createElement("div");
   d.className="msg "+(mine?"me":"other");
@@ -81,18 +67,11 @@ onChildAdded(msgsRef, s=>{
   if(m.type==="file") addMsg(`<a href="${m.data}" download>${m.name}</a>`,m.uid===me);
 });
 
-// إرسال نصوص
+// --- 3. إرسال النصوص ---
 window.sendText=()=>{
   if(!text.value)return;
   push(msgsRef,{type:"text",data:text.value,uid:me});
   text.value="";
-};
-
-// إرسال الملفات مع الربط المباشر بمحرك الحالة
-file.onchange = () => {
-    const f = file.files[0];
-    if(!f) return;
-    engine.sendFile(f);
 };
 </script>
 
