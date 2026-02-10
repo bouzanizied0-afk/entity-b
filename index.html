@@ -87,8 +87,8 @@
             reader.onload = async (event) => {
                 const base64Data = btoa(String.fromCharCode.apply(null, new Uint8Array(event.target.result)));
 
-                const counterSnap = await get(ref(db, "temporal/counter"));
-                const nextT = (counterSnap.val() || 0) + 1;
+                const counterSnap = await get(ref(db, "core/sync/counter"));
+            const nextT = (counterSnap.val() || 0) + 1;
 
                 const payload = {
                     data: base64Data,
@@ -96,8 +96,8 @@
                     type: file.type
                 };
 
-                await set(ref(db, `temporal/stream/state_${nextT}`), payload);
-                await set(ref(db, "temporal/counter"), nextT);
+                const counterSnap = await get(ref(db, "core/sync/counter"));
+             await set(ref(db, "core/sync/counter"), nextT);
                 
                 localT = nextT; // المزامنة محلياً لعدم استقبال ما أرسلته أنا
                 document.getElementById("loader").style.display = "none";
