@@ -1,12 +1,24 @@
-function numberToChar(num) {
-    if(num < 0 || num > 0x10FFFF){
-        throw new RangeError("الرقم خارج نطاق Unicode الصالح");
+// engineCore.js
+export class StateEngine {
+    constructor(callbacks) {
+        this.onNewState = callbacks.onNewState; // دالة تُنفذ عند استلام صورة
+        this.onStatusChange = callbacks.onStatusChange; // دالة لتحديث نصوص الحالة
     }
-    return String.fromCodePoint(num);
-}
 
-// أمثلة:
-console.log(numberToChar(65));        // A
-console.log(numberToChar(945));       // α (ألفا يونانية)
-console.log(numberToChar(0x4F60));    // 你 (حرف صيني)
-console.log(numberToChar(0x1F600));   // 😀 (إيموجي)
+    async sendFile(file) {
+        this.onStatusChange("جاري المعالجة والإرسال...");
+        const reader = new FileReader();
+        
+        reader.onload = async (event) => {
+            const uint8 = new Uint8Array(event.target.result);
+            const base64Data = btoa(String.fromCharCode.apply(null, uint8));
+
+            // مكان حفظ البيانات سيكون لاحقًا عند الربط بالخادم
+            const payload = { data: base64Data, type: file.type };
+
+            this.onNewState(`data:${payload.type};base64,${payload.data}`);
+            this.onStatusChange("تم المعالجة محليًا.");
+        };
+        reader.readAsArrayBuffer(file);
+    }
+}
