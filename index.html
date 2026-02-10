@@ -35,9 +35,9 @@
 
         const firebaseConfig = {
             apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-            authDomain: "setouchi-it.firebaseapp.com",
-            databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-            projectId: "setouchi-it",
+            authDomain: "zied-e3b78.firebaseapp.com",
+            databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/",
+            projectId: "zied-e3b78",
         };
 
         const app = initializeApp(firebaseConfig);
@@ -46,22 +46,19 @@
         let localT = 0;
 
         // 1. تحديث عداد الخادم للتحقق من الاتصال
-        onValue(ref(db, "core/status/heartbeat"), (s) => 
-    document.getElementById("serverTimer").innerText = s.val() || 0
-      );
+        onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
 
         // 2. الاستماع والمزامنة التلقائية (الميزة المطلوبة)
-        onValue(ref(db, "core/sync/counter"), async (snap) => {
+        onValue(ref(db, "temporal/counter"), async (snap) => {
             const serverT = snap.val();
             
-            // إذا كان العداد على الخادم أكبر من العداد المحلي، يعني هناك صورة جديدة
             if (serverT && serverT > localT) {
-                localT = serverT; // تحديث العداد المحلي فوراً لمنع التكرار
+                localT = serverT;
                 
                 document.getElementById("statusText").innerText = "جاري جلب الصورة تلقائياً...";
                 document.getElementById("loader").style.display = "block";
 
-                const stateSnap = await get(ref(db, `core/sync/stream/state_${serverT}`));
+                const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
                 const incomingState = stateSnap.val();
 
                 if (incomingState) {
@@ -87,8 +84,8 @@
             reader.onload = async (event) => {
                 const base64Data = btoa(String.fromCharCode.apply(null, new Uint8Array(event.target.result)));
 
-                const counterSnap = await get(ref(db, "core/sync/counter"));
-            const nextT = (counterSnap.val() || 0) + 1;
+                const counterSnap = await get(ref(db, "temporal/counter"));
+                const nextT = (counterSnap.val() || 0) + 1;
 
                 const payload = {
                     data: base64Data,
@@ -96,10 +93,10 @@
                     type: file.type
                 };
 
-                const counterSnap = await get(ref(db, "core/sync/counter"));
-             await set(ref(db, "core/sync/counter"), nextT);
+                await set(ref(db, `temporal/stream/state_${nextT}`), payload);
+                await set(ref(db, "temporal/counter"), nextT);
                 
-                localT = nextT; // المزامنة محلياً لعدم استقبال ما أرسلته أنا
+                localT = nextT;
                 document.getElementById("loader").style.display = "none";
                 document.getElementById("statusText").innerText = "تم الإرسال بنجاح.";
             };
