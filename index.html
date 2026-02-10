@@ -2,72 +2,19 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>دردشة + عداد متزامن</title>
-<style>
-body { margin:0; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; background:#e5ddd5; }
-.chat-container { width:400px; height:600px; display:flex; flex-direction:column; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.2); }
-.chat-header { background:#075e54; color:#fff; padding:10px; display:flex; justify-content:space-between; align-items:center; }
-.chat-messages { flex:1; padding:10px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; background:#ece5dd; }
-.message { max-width:70%; padding:6px 10px; border-radius:8px; position:relative; word-wrap:break-word; }
-.message.sent { background:#dcf8c6; align-self:flex-end; }
-.message.received { background:#fff; align-self:flex-start; }
-.message img { max-width:100%; border-radius:8px; margin-top:4px; }
-.message .delete-btn { position:absolute; top:2px; left:2px; font-size:12px; cursor:pointer; color:red; }
-.chat-input { display:flex; padding:6px; gap:4px; background:#f0f0f0; }
-.chat-input input[type="text"] { flex:1; padding:6px; border-radius:20px; border:1px solid #ccc; }
-.chat-input input[type="file"] { display:none; }
-.chat-input label, .chat-input button { padding:6px 10px; border-radius:50%; cursor:pointer; background:#25d366; color:#fff; border:none; display:flex; align-items:center; justify-content:center; }
-.chat-input button { background:#128c7e; border-radius:20px; }
-</style>
+<title>دردشة بسيطة</title>
 </head>
 <body>
-
-<div class="chat-container">
-  <div class="chat-header">
-    تجارب الدردشة
-    <span id="serverTimer">0</span>
-  </div>
-  <div class="chat-messages" id="chatMessages"></div>
-  <div class="chat-input">
-    <input type="text" id="chatInput" placeholder="اكتب رسالة...">
-    <label for="fileInput">📎</label>
-    <input type="file" id="fileInput" accept="image/*">
-    <button id="sendBtn">إرسال</button>
-  </div>
-</div>
+<div>العداد: <span id="serverTimer">0</span></div>
+<input id="chatInput" placeholder="اكتب رسالة...">
+<button id="sendBtn">إرسال</button>
+<input type="file" id="fileInput">
+<div id="chatMessages"></div>
 
 <script type="module">
-  // ربط العداد والمسار الرئيسي
-  import { bindHeartbeatDisplay } from './heartbeat.js';
-  bindHeartbeatDisplay('serverTimer');
-  import './heartbeatClient.js';
-
-  const chatMessages = document.getElementById("chatMessages");
-  const chatInput = document.getElementById("chatInput");
-  const sendBtn = document.getElementById("sendBtn");
-  const fileInput = document.getElementById("fileInput");
-
-  sendBtn.onclick = () => {
-    const text = chatInput.value.trim();
-    if(!text) return; addMessage(text,"sent"); chatInput.value="";
-  };
-
-  fileInput.onchange = () => {
-    const file = fileInput.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ()=>addMessage(reader.result,"sent",true);
-    reader.readAsDataURL(file);
-  };
-
-  function addMessage(content,type="received",isImage=false){
-    const msg=document.createElement("div"); msg.classList.add("message",type);
-    const del=document.createElement("span"); del.textContent="×"; del.classList.add("delete-btn");
-    del.onclick=()=>msg.remove(); msg.appendChild(del);
-    if(isImage){ const img=document.createElement("img"); img.src=content; msg.appendChild(img); }
-    else{ const txt=document.createElement("div"); txt.textContent=content; msg.appendChild(txt); }
-    chatMessages.appendChild(msg); chatMessages.scrollTop=chatMessages.scrollHeight;
-  }
+import { bindHeartbeatDisplay } from './heartbeat.js';
+bindHeartbeatDisplay('serverTimer');
+import './heartbeatClient.js';
 </script>
-
 </body>
 </html>
