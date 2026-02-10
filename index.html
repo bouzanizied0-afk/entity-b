@@ -1,107 +1,86 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>نظام التزامن التلقائي الفوري</title>
-    <style>
-        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; flex-direction: column; align-items: center; padding: 30px; }
-        .container { background: #111; padding: 25px; border-radius: 15px; border: 1px solid #00d4ff; width: 450px; text-align: center; box-shadow: 0 0 25px rgba(0,212,255,0.2); }
-        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; color: #555; }
-        input[type="file"] { margin: 20px 0; color: #00d4ff; }
-        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 2px solid #00d4ff; border-radius: 10px; animation: fadeIn 0.5s; }
-        .status { margin-top: 15px; font-size: 0.9em; color: #888; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-        .loader { display: none; margin: 10px auto; border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
+<meta charset="UTF-8">
+<title>دردشة مباشرة</title>
+<style>
+html,body{margin:0;height:100%;font-family:sans-serif;background:#0a0a0a;color:#eee}
+#chat{display:flex;flex-direction:column;height:100%}
+#msgs{flex:1;overflow:auto;padding:10px}
+.msg{margin:6px 0;padding:8px 12px;border-radius:10px;max-width:70%}
+.me{background:#00d4ff;color:#000;margin-left:auto}
+.other{background:#222}
+#bar{display:flex;padding:10px;gap:5px;border-top:1px solid #222}
+input[type=text]{flex:1;padding:8px;border-radius:8px;border:none}
+button{padding:8px 12px;border:none;border-radius:8px;background:#00d4ff;cursor:pointer}
+input[type=file]{display:none}
+img{max-width:200px;border-radius:8px}
+a{color:#00d4ff}
+</style>
 </head>
 <body>
 
-    <div class="container">
-        <div class="server-status">قناة المزامنة: <span id="serverTimer">0</span></div>
-        <h2>تزامن تلقائي (بث حي)</h2>
-        
-        <input type="file" id="fileInput" accept="image/*">
-        
-        <div class="loader" id="loader"></div>
-        <div id="statusText" class="status">في انتظار بيانات...</div>
-        
-        <img id="resultImg" alt="الصورة المستلمة">
-    </div>
+<div id="chat">
+  <div id="msgs"></div>
+  <div id="bar">
+    <input id="text" placeholder="اكتب رسالة..." />
+    <button onclick="sendText()">إرسال</button>
+    <button onclick="file.click()">📎</button>
+    <input id="file" type="file" />
+  </div>
+</div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+<script type="module">
+import { ref, set, onChildAdded, push } 
+from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-            authDomain: "zied-e3b78.firebaseapp.com",
-            databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/",
-            projectId: "zied-e3b78",
-        };
+import { db, PATHS, startHeartbeat } from "./serverCore.js";
+startHeartbeat();
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+const msgsRef = ref(db, PATHS.stream);
+const msgsDiv = document.getElementById("msgs");
+const text = document.getElementById("text");
+const file = document.getElementById("file");
+const me = crypto.randomUUID();
 
-        let localT = 0;
+function addMsg(html, mine){
+  const d=document.createElement("div");
+  d.className="msg "+(mine?"me":"other");
+  d.innerHTML=html;
+  msgsDiv.appendChild(d);
+  msgsDiv.scrollTop=msgsDiv.scrollHeight;
+}
 
-        // 1. تحديث عداد الخادم للتحقق من الاتصال
-        onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
+onChildAdded(msgsRef, s=>{
+  const m=s.val();
+  if(!m)return;
+  if(m.type==="text") addMsg(m.data,m.uid===me);
+  if(m.type==="img") addMsg(`<img src="${m.data}">`,m.uid===me);
+  if(m.type==="file") addMsg(`<a href="${m.data}" download>${m.name}</a>`,m.uid===me);
+});
 
-        // 2. الاستماع والمزامنة التلقائية (الميزة المطلوبة)
-        onValue(ref(db, "temporal/counter"), async (snap) => {
-            const serverT = snap.val();
-            
-            if (serverT && serverT > localT) {
-                localT = serverT;
-                
-                document.getElementById("statusText").innerText = "جاري جلب الصورة تلقائياً...";
-                document.getElementById("loader").style.display = "block";
+window.sendText=()=>{
+  if(!text.value)return;
+  push(msgsRef,{type:"text",data:text.value,uid:me});
+  text.value="";
+};
 
-                const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
-                const incomingState = stateSnap.val();
+file.onchange=()=>{
+  const f=file.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    const data=e.target.result;
+    const isImg=f.type.startsWith("image");
+    push(msgsRef,{
+      type:isImg?"img":"file",
+      data,
+      name:f.name,
+      uid:me
+    });
+  };
+  r.readAsDataURL(f);
+};
+</script>
 
-                if (incomingState) {
-                    const imgElement = document.getElementById("resultImg");
-                    imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
-                    imgElement.style.display = "block";
-                    
-                    document.getElementById("loader").style.display = "none";
-                    document.getElementById("statusText").innerText = "تم استلام صورة جديدة وتحديثها.";
-                }
-            }
-        });
-
-        // 3. عملية الإرسال
-        document.getElementById('fileInput').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            document.getElementById("statusText").innerText = "جاري معالجة الصورة وإرسالها...";
-            document.getElementById("loader").style.display = "block";
-
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                const base64Data = btoa(String.fromCharCode.apply(null, new Uint8Array(event.target.result)));
-
-                const counterSnap = await get(ref(db, "temporal/counter"));
-                const nextT = (counterSnap.val() || 0) + 1;
-
-                const payload = {
-                    data: base64Data,
-                    T: nextT,
-                    type: file.type
-                };
-
-                await set(ref(db, `temporal/stream/state_${nextT}`), payload);
-                await set(ref(db, "temporal/counter"), nextT);
-                
-                localT = nextT;
-                document.getElementById("loader").style.display = "none";
-                document.getElementById("statusText").innerText = "تم الإرسال بنجاح.";
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    </script>
 </body>
 </html>
