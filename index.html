@@ -2,34 +2,50 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام التزامن التلقائي الفوري</title>
+    <title>نظام التزامن المتقدم</title>
     <style>
-        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; flex-direction: column; align-items: center; padding: 30px; }
-        .container { background: #111; padding: 25px; border-radius: 15px; border: 1px solid #00d4ff; width: 450px; text-align: center; box-shadow: 0 0 25px rgba(0,212,255,0.2); }
-        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; color: #555; }
-        input[type="file"] { margin: 20px 0; color: #00d4ff; }
-        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 2px solid #00d4ff; border-radius: 10px; animation: fadeIn 0.5s; }
-        .status { margin-top: 15px; font-size: 0.9em; color: #888; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-        .loader { display: none; margin: 10px auto; border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: #111; padding: 30px; border-radius: 20px; border: 1px solid #333; width: 400px; text-align: center; }
+        .server-status { font-family: monospace; font-size: 11px; color: #555; margin-bottom: 20px; }
+        input[type="file"] { background: #222; padding: 10px; border-radius: 8px; width: 100%; box-sizing: border-box; color: #00d4ff; cursor: pointer; }
+        #resultImg { width: 100%; border-radius: 12px; margin-top: 20px; display: none; border: 2px solid #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.3); }
+        .status-text { margin-top: 15px; font-size: 13px; color: #888; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="server-status">قناة المزامنة: <span id="serverTimer">0</span></div>
-        <h2>تزامن تلقائي (بث حي)</h2>
+        <div class="server-status">SERVER HEARTBEAT: <span id="timer">0</span></div>
+        <h2 style="margin-top:0">بث الحالات</h2>
         
-        <input type="file" id="fileInput" accept="image/*">
+        <input type="file" id="filePicker" accept="image/*">
         
-        <div class="loader" id="loader"></div>
-        <div id="statusText" class="status">في انتظار بيانات...</div>
-        
-        <img id="resultImg" alt="الصورة المستلمة">
-</div>
-<!-- ربط الواجهة بالمحرّك -->
-<script type="module" src="./client.js"></script>
+        <div id="msg" class="status-text">في انتظار اتصال...</div>
+        <img id="display" alt="المحتوى المتزامن">
+    </div>
 
+    <script type="module">
+        import { StateEngine } from './engine.js';
+
+        // ربط المحرك بالواجهة
+        const engine = new StateEngine({
+            onNewState: (imageUrl) => {
+                const img = document.getElementById('display');
+                img.src = imageUrl;
+                img.style.display = 'block';
+            },
+            onStatusChange: (text) => {
+                document.getElementById('msg').innerText = text;
+            },
+            onHeartbeat: (val) => {
+                document.getElementById('timer').innerText = val;
+            }
+        });
+
+        // حدث اختيار ملف
+        document.getElementById('filePicker').onchange = (e) => {
+            if (e.target.files[0]) engine.sendFile(e.target.files[0]);
+        };
+    </script>
 </body>
 </html>
