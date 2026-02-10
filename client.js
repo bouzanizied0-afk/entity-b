@@ -1,4 +1,3 @@
-    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
@@ -71,5 +70,6 @@
                 document.getElementById("statusText").innerText = "تم الإرسال بنجاح.";
             };
             reader.readAsArrayBuffer(file);
-        });
-    </script>
+               }
+            }
+    
