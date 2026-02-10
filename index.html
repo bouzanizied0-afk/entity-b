@@ -2,38 +2,34 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام تزامن الحالات الشامل</title>
+    <title>نظام تزامن الصور الحقيقي</title>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: #eee; display: flex; flex-direction: column; align-items: center; padding: 50px; }
-        .container { background: #2a2a2a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; position: relative; text-align: center; }
-        .server-status { position: absolute; top: 10px; left: 10px; background: #000; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; font-family: monospace; font-size: 12px; color: #0f0; }
-        input[type="file"] { margin: 20px 0; width: 100%; }
-        .progress-bar { width: 100%; background: #444; height: 20px; border-radius: 10px; overflow: hidden; display: none; margin-bottom: 10px; }
-        .progress-fill { width: 0%; height: 100%; background: #4caf50; transition: width 0.1s; }
-        .status { margin-top: 15px; font-size: 0.9em; color: #bbb; }
-        #rebuildBtn { margin-top: 20px; padding: 12px 20px; background: #e91e63; color: white; border: none; border-radius: 5px; cursor: pointer; display: none; width: 100%; font-weight: bold; }
-        #resultImg { margin-top: 20px; max-width: 100%; border: 2px solid #444; display: none; }
-        .marker-info { font-family: monospace; background: #000; padding: 10px; margin-top: 10px; border-radius: 4px; display: none; font-size: 10px; word-break: break-all; }
+        body { font-family: sans-serif; background: #121212; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 30px; }
+        .container { background: #1e1e1e; padding: 25px; border-radius: 15px; border: 1px solid #00ff41; width: 450px; text-align: center; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
+        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; }
+        input[type="file"] { margin: 20px 0; color: #00ff41; }
+        #rebuildBtn { display: none; width: 100%; padding: 15px; background: #00ff41; color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 1px solid #00ff41; border-radius: 8px; }
+        .progress-bar { width: 100%; background: #333; height: 10px; border-radius: 5px; display: none; margin: 10px 0; overflow: hidden; }
+        .progress-fill { width: 0%; height: 100%; background: #00ff41; transition: 0.3s; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="server-status">خادم: <span id="serverTimer">0</span>/10</div>
-        <h2>تزامن الحالة الذكي</h2>
+        <div class="server-status">قناة التزامن النشطة: <span id="serverTimer">0</span></div>
+        <h2>تزامن محتوى حتمي</h2>
         
-        <input type="file" id="fileInput">
+        <input type="file" id="fileInput" accept="image/*">
         
         <div class="progress-bar" id="progressWrapper">
             <div class="progress-fill" id="progressFill"></div>
         </div>
         
-        <div id="statusText" class="status">جاهز...</div>
+        <div id="statusText">انتظار الإدخال...</div>
         
-        <button id="rebuildBtn">تركيب الحالة المستلمة الآن ⚡</button>
-        
-        <div class="marker-info" id="markerDisplay"></div>
-        <img id="resultImg" alt="النتيجة المركبة">
+        <button id="rebuildBtn">⚡ استرجاع وتركيب الصورة المستلمة</button>
+        <img id="resultImg">
     </div>
 
     <script type="module">
@@ -45,110 +41,77 @@
             authDomain: "setouchi-it.firebaseapp.com",
             databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
             projectId: "setouchi-it",
-            storageBucket: "setouchi-it.appspot.com",
-            messagingSenderId: "456612217542",
-            appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // --- محرك الحالة ---
-        class DeterministicEngine {
-            constructor() { this.T = 0; this.currentMarkers = null; }
-        }
-        const engine = new DeterministicEngine();
+        let localT = 0;
+        let incomingState = null;
 
-        // العناصر
-        const timerElement = document.getElementById("serverTimer");
-        const statusText = document.getElementById("statusText");
-        const rebuildBtn = document.getElementById("rebuildBtn");
-        const progressFill = document.getElementById("progressFill");
-        const progressWrapper = document.getElementById("progressWrapper");
-        const resultImg = document.getElementById("resultImg");
+        // تحديث نبض النظام
+        onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
 
-        // 1. نبض الخادم (Heartbeat)
-        onValue(ref(db, "system/heartbeat"), (snap) => {
-            timerElement.innerText = snap.val() || 0;
-        });
-
-        setInterval(async () => {
-            let current = parseInt(timerElement.innerText);
-            await set(ref(db, "system/heartbeat"), current >= 10 ? 1 : current + 1);
-        }, 2000);
-
-        // 2. الاستماع لوصول حالات جديدة (للمتصفح المستقبل)
+        // الاستماع للحالات الجديدة
         onValue(ref(db, "temporal/counter"), async (snap) => {
             const serverT = snap.val();
-            if (serverT && serverT > engine.T) {
-                statusText.innerText = "تنبيه: حالة جديدة متوفرة على الخادم!";
+            if (serverT && serverT > localT) {
                 const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
-                engine.currentMarkers = stateSnap.val();
-                rebuildBtn.style.display = "block"; // إظهار زر التركيب
+                incomingState = stateSnap.val();
+                if (incomingState) {
+                    document.getElementById("statusText").innerText = "وصلت بيانات صورة حقيقية!";
+                    document.getElementById("rebuildBtn").style.display = "block";
+                }
             }
         });
 
-        // 3. وظيفة الإرسال (تفكيك)
+        // عملية التفكيك والإرسال (Sender)
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            progressWrapper.style.display = 'block';
-            statusText.innerText = "جاري التفكيك المحلي...";
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                document.getElementById("progressWrapper").style.display = "block";
+                const arrayBuffer = event.target.result;
+                const uint8 = new Uint8Array(arrayBuffer);
+                
+                // تحويل مصفوفة البايتات إلى سلسلة نصية (Base64) لنقل المحتوى الحقيقي
+                const base64Data = btoa(String.fromCharCode.apply(null, uint8));
 
-            const counterSnap = await get(ref(db, "temporal/counter"));
-            const nextT = (counterSnap.val() || 0) + 1;
+                const counterSnap = await get(ref(db, "temporal/counter"));
+                const nextT = (counterSnap.val() || 0) + 1;
 
-            const buffer = await file.arrayBuffer();
-            const uint8 = new Uint8Array(buffer);
-            const Qlen = uint8.length;
+                const statePayload = {
+                    data: base64Data, // المحتوى الحقيقي مشفر
+                    T: nextT,
+                    type: file.type
+                };
 
-            // محاكاة التفكيك الحتمي
-            for (let i = 0; i < Qlen; i += 5000) {
-                progressFill.style.width = Math.round((i / Qlen) * 100) + '%';
-                await new Promise(r => setTimeout(r, 0));
-            }
-
-            const markers = {
-                start: (nextT * 31 + Qlen * 7) % Qlen,
-                end: (nextT * 17 + Qlen * 13) % Qlen,
-                T: nextT,
-                Qlen: Qlen
+                await set(ref(db, `temporal/stream/state_${nextT}`), statePayload);
+                await set(ref(db, "temporal/counter"), nextT);
+                
+                localT = nextT;
+                document.getElementById("statusText").innerText = "تم إرسال الصورة بنجاح.";
+                document.getElementById("progressFill").style.width = "100%";
             };
-
-            await set(ref(db, `temporal/stream/state_${nextT}`), markers);
-            await set(ref(db, "temporal/counter"), nextT);
-            engine.T = nextT; // تحديث العداد المحلي لعدم تكرار استقبال نفس الحالة
-
-            statusText.innerText = "تم إرسال إحداثيات الحالة للخادم.";
-            progressWrapper.style.display = 'none';
+            reader.readAsArrayBuffer(file);
         });
 
-        // 4. وظيفة التركيب (Reconstruction)
-        rebuildBtn.onclick = async () => {
-            if (!engine.currentMarkers) return;
+        // عملية التركيب (Receiver)
+        document.getElementById("rebuildBtn").onclick = () => {
+            if (!incomingState) return;
 
-            statusText.innerText = "جاري تركيب البيانات حتمياً...";
-            const { T, Qlen, start, end } = engine.currentMarkers;
-
-            // بناء البيانات محلياً من العدم (بناءً على الترتيب والعداد)
-            const Q = new Uint8Array(Qlen);
-            for (let i = 0; i < Qlen; i++) {
-                Q[i] = (i + T) % 256; 
-            }
-
-            const a = Math.min(start, end);
-            const b = Math.max(start, end);
-            const finalData = Q.slice(a, b + 1);
-
-            // عرض النتيجة كصورة
-            const blob = new Blob([finalData], { type: "image/png" });
-            resultImg.src = URL.createObjectURL(blob);
-            resultImg.style.display = "block";
+            document.getElementById("statusText").innerText = "جاري إعادة بناء الصورة...";
             
-            statusText.innerText = "تمت عملية التركيب بنجاح!";
-            rebuildBtn.style.display = "none";
-            engine.T = T; // تحديث العداد ليتطابق مع الخادم
+            // تحويل Base64 kembali إلى صورة
+            const imgElement = document.getElementById("resultImg");
+            imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
+            imgElement.style.display = "block";
+            
+            localT = incomingState.T;
+            document.getElementById("rebuildBtn").style.display = "none";
+            document.getElementById("statusText").innerText = "تم التركيب! الصورة تظهر الآن.";
         };
     </script>
 </body>
