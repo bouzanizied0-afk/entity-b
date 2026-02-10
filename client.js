@@ -1,52 +1,58 @@
 // ==================== client.js ====================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-app.js";
+import { getDatabase, ref, set, push, get, child } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-database.js";
 
-// رابط السيرفر الخاص بك (حافظ على / في النهاية)
-const SERVER_URL = "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/";
+// ---------------- Firebase config ----------------
+const firebaseConfig = {
+  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+  authDomain: "setouchi-it.firebaseapp.com",
+  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+  projectId: "setouchi-it",
+  storageBucket: "setouchi-it.appspot.com",
+  messagingSenderId: "456612217542",
+  appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const streamRef = ref(db, "temporal/stream");
 
 // --------------------- مرحلة 1: تفكيك الملف ---------------------
 async function extract(file) {
   const buffer = await file.arrayBuffer();
-  return new Uint8Array(buffer); // مصفوفة Bytes
+  return new Uint8Array(buffer);
 }
 
-// --------------------- مرحلة 2: تقسيم إلى Chunks وربط العداد ---------------------
+// --------------------- مرحلة 2: تقسيم إلى Chunks ---------------------
 function encode(bytes, chunkSize = 1024) {
   const chunks = [];
   let counter = 0;
   for (let i = 0; i < bytes.length; i += chunkSize) {
     const slice = bytes.slice(i, i + chunkSize);
-    // نرسل كل Chunk كمصفوفة من أرقام عادية لضمان Firebase
     chunks.push({ counter, value: Array.from(slice) });
     counter++;
   }
   return chunks;
 }
 
-// --------------------- مرحلة 3: إرسال Chunks مع تحديث العداد ---------------------
+// --------------------- مرحلة 3: إرسال Chunks مع تحديث التقدم ---------------------
 async function sendChunks(chunks) {
-  // تأكد من وجود عنصر شريط التقدم قبل أي إرسال
-  let progressBar = document.getElementById("progressDisplay");
-  if (!progressBar) {
-    progressBar = document.createElement("div");
-    progressBar.id = "progressDisplay";
-    progressBar.style.marginTop = "10px";
-    document.body.appendChild(progressBar);
-  }
+  const progressBar = document.getElementById("progressDisplay");
+  const counterDisplay = document.getElementById("counterDisplay");
 
   for (const chunk of chunks) {
-    const url = `${SERVER_URL}/stream/${chunk.counter}.json`;
+    const chunkRef = ref(db, `temporal/stream/${chunk.counter}`);
     try {
-      await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(chunk.value)
-      });
+      await set(chunkRef, chunk.value);
 
-      // تحديث العداد بشكل متزامن
+      // تحديث العداد
+      if (counterDisplay) counterDisplay.textContent = chunk.counter;
+
+      // تحديث شريط التقدم
       const percent = Math.floor(((chunk.counter + 1) / chunks.length) * 100);
-      progressBar.textContent = `Progress: ${percent}%`;
+      if (progressBar) progressBar.textContent = `Progress: ${percent}%`;
 
-      // نبضة صغيرة لرؤية حركة العداد بشكل سلس
+      // نبضة صغيرة لرؤية الحركة
       await new Promise(r => setTimeout(r, 5));
 
     } catch (err) {
@@ -60,8 +66,8 @@ async function sendChunks(chunks) {
 
 // --------------------- مرحلة 4: سحب Chunks وإعادة البناء ---------------------
 async function fetchChunks() {
-  const res = await fetch(`${SERVER_URL}/stream.json`);
-  const data = await res.json();
+  const snapshot = await get(streamRef);
+  const data = snapshot.val();
   if (!data) return [];
 
   const chunks = Object.keys(data).map(key => ({
@@ -69,14 +75,13 @@ async function fetchChunks() {
     value: data[key]
   }));
 
-  // ترتيب حسب الرقم
   chunks.sort((a, b) => a.counter - b.counter);
   return chunks;
 }
 
 function reconstruct(chunks) {
   const byteArrays = chunks.map(c => Uint8Array.from(c.value));
-  let totalLength = byteArrays.reduce((sum, arr) => sum + arr.length, 0);
+  const totalLength = byteArrays.reduce((sum, arr) => sum + arr.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
   for (const arr of byteArrays) {
@@ -94,13 +99,27 @@ function downloadFile(bytes, filename = "reconstructed.bin") {
   a.click();
 }
 
-// --------------------- مرحلة 5: ربط الأزرار ---------------------
+// --------------------- ربط الأزرار ---------------------
 document.getElementById("send").onclick = async () => {
   const file = document.getElementById("fileInput").files[0];
   if (!file) return alert("اختر ملفاً أولاً");
 
   const bytes = await extract(file);
   const chunks = encode(bytes);
+
+  if (!document.getElementById("progressDisplay")) {
+    const p = document.createElement("div");
+    p.id = "progressDisplay";
+    p.style.marginTop = "10px";
+    document.body.appendChild(p);
+  }
+
+  if (!document.getElementById("counterDisplay")) {
+    const c = document.createElement("div");
+    c.id = "counterDisplay";
+    c.style.marginTop = "5px";
+    document.body.appendChild(c);
+  }
 
   await sendChunks(chunks);
 };
