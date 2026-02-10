@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>تجربة العداد</title>
+<style>
+body {
+  font-family: sans-serif;
+  background: #111;
+  color: #0ff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+}
+#counter {
+  font-size: 3em;
+  margin-bottom: 20px;
+}
+small {
+  color: #888;
+}
+</style>
+</head>
+<body>
+
+<div id="counter">0</div>
+<small>العداد من Firebase يتحدث كل 10 ثواني</small>
+
+<script type="module">
+import { startHeartbeat, onCounterChange } from "./serverCore.js";
+
+// بدء العداد الدوري
+startHeartbeat(10000);
+
+// عنصر عرض العداد
+const counterDiv = document.getElementById("counter");
+
+// متابعة العداد من Firebase
+onCounterChange((value) => {
+  counterDiv.textContent = value;
+});
+</script>
+
+</body>
+</html>
