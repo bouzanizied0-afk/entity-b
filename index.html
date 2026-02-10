@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>دردشة مباشرة</title>
+<title>دردشة متزامنة مع الخادم</title>
 <style>
 html,body{margin:0;height:100%;font-family:sans-serif;background:#0a0a0a;color:#eee}
 #chat{display:flex;flex-direction:column;height:100%}
@@ -31,11 +31,13 @@ a{color:#00d4ff}
 </div>
 
 <script type="module">
-import { ref, set, onChildAdded, push } 
+import { ref, push, onChildAdded, set, get } 
 from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 import { db, PATHS, startHeartbeat } from "./serverCore.js";
-startHeartbeat();
+import { StateEngine } from "./engine.js"; // محرك الملفات
+
+startHeartbeat(); // يبدأ عداد الخادم
 
 const msgsRef = ref(db, PATHS.stream);
 const msgsDiv = document.getElementById("msgs");
@@ -43,6 +45,26 @@ const text = document.getElementById("text");
 const file = document.getElementById("file");
 const me = crypto.randomUUID();
 
+// إنشاء محرك الحالة مع ربطه بالخادم
+const engine = new StateEngine({
+    onNewState: async (data) => {
+        // جلب الرقم التالي للعداد
+        const counterSnap = await get(ref(db, PATHS.counter));
+        const nextT = (counterSnap.val() || 0) + 1;
+
+        // حفظ الحالة على الخادم
+        await set(ref(db, `${PATHS.stream}/state_${nextT}`), { data, type: data.split(";")[0].replace("data:", "") });
+        await set(ref(db, PATHS.counter), nextT);
+
+        // دفع الرسالة للدردشة
+        push(msgsRef, { type: "img", data, uid: me });
+    },
+    onStatusChange: (status) => {
+        console.log(status);
+    }
+});
+
+// عرض الرسائل الجديدة
 function addMsg(html, mine){
   const d=document.createElement("div");
   d.className="msg "+(mine?"me":"other");
@@ -59,26 +81,18 @@ onChildAdded(msgsRef, s=>{
   if(m.type==="file") addMsg(`<a href="${m.data}" download>${m.name}</a>`,m.uid===me);
 });
 
+// إرسال نصوص
 window.sendText=()=>{
   if(!text.value)return;
   push(msgsRef,{type:"text",data:text.value,uid:me});
   text.value="";
 };
 
-file.onchange=()=>{
-  const f=file.files[0]; if(!f)return;
-  const r=new FileReader();
-  r.onload=e=>{
-    const data=e.target.result;
-    const isImg=f.type.startsWith("image");
-    push(msgsRef,{
-      type:isImg?"img":"file",
-      data,
-      name:f.name,
-      uid:me
-    });
-  };
-  r.readAsDataURL(f);
+// إرسال الملفات مع الربط المباشر بمحرك الحالة
+file.onchange = () => {
+    const f = file.files[0];
+    if(!f) return;
+    engine.sendFile(f);
 };
 </script>
 
