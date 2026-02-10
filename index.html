@@ -59,8 +59,8 @@
                 document.getElementById("statusText").innerText = "جاري جلب الصورة تلقائياً...";
                 document.getElementById("loader").style.display = "block";
 
-                const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
-                const incomingState = stateSnap.val();
+                const stateSnap = await get(ref(db, `temporal_new/stream/state_${serverT}`));
+               const incomingState = stateSnap.val();
 
                 if (incomingState) {
                     const imgElement = document.getElementById("resultImg");
@@ -94,8 +94,8 @@
                     type: file.type
                 };
 
-                await set(ref(db, `temporal/stream/state_${nextT}`), payload);
-                await set(ref(db, "temporal/counter"), nextT);
+                await set(ref(db, `temporal_new/stream/state_${nextT}`), payload);
+             await set(ref(db, "temporal_new/counter"), nextT);
                 
                 localT = nextT; // المزامنة محلياً لعدم استقبال ما أرسلته أنا
                 document.getElementById("loader").style.display = "none";
