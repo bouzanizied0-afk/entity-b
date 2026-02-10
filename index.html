@@ -2,219 +2,104 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منصة مزامنة الحالات الشاملة</title>
+    <title>نظام التزامن المتقدم - النسخة المطورة</title>
     <style>
-        :root {
-            --primary: #00d4ff;
-            --bg: #0a0a0a;
-            --panel: #111;
-            --danger: #ff4b2b;
-        }
-
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: var(--bg); 
-            color: white; 
-            margin: 0; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-        }
-
-        .chat-container { 
-            background: var(--panel); 
-            width: 90%; 
-            max-width: 600px; 
-            height: 85vh; 
+        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        
+        /* توسيع الحاوية لتشبه خانة الدردشة */
+        .container { 
+            background: #111; 
+            padding: 25px; 
             border-radius: 20px; 
             border: 1px solid #333; 
-            display: flex; 
-            flex-direction: column; 
-            position: relative;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-
-        /* رأس الواجهة */
-        .header {
-            padding: 15px 20px;
-            border-bottom: 1px solid #222;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .server-status { font-family: monospace; font-size: 11px; color: var(--primary); }
-
-        /* منطقة المحتوى (الدردشة) */
-        .content-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
+            width: 500px; /* زيادة العرض */
+            min-height: 60vh; /* زيادة الطول */
+            text-align: center; 
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 15px;
+            justify-content: space-between;
         }
 
-        /* عرض الملفات المستلمة */
-        #displayContainer {
-            width: 100%;
-            text-align: center;
-            position: relative;
-        }
+        .server-status { font-family: monospace; font-size: 11px; color: #555; margin-bottom: 10px; }
+        
+        /* منطقة العرض */
+        .display-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        #display { width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 2px solid #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.3); }
+        #fileLink { display: none; color: #fff; background: #222; padding: 15px; border-radius: 10px; text-decoration: none; border: 1px dashed #00d4ff; margin-top: 10px; width: 80%; }
+        
+        /* أدوات التحكم */
+        .controls { margin-top: 20px; display: flex; gap: 10px; flex-direction: column; }
+        
+        input[type="file"] { background: #1a1a1a; padding: 10px; border-radius: 8px; box-sizing: border-box; color: #00d4ff; cursor: pointer; border: 1px solid #333; }
+        
+        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .delete-btn:hover { background: #ff2400; }
 
-        #display { 
-            max-width: 100%; 
-            border-radius: 12px; 
-            border: 1px solid #333; 
-            display: none; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-
-        .file-icon {
-            font-size: 50px;
-            color: var(--primary);
-            display: none;
-        }
-
-        /* صندوق التحكم السفلي */
-        .footer {
-            padding: 20px;
-            border-top: 1px solid #222;
-            background: #151515;
-            border-radius: 0 0 20px 20px;
-        }
-
-        .controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .btn {
-            padding: 12px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: 0.3s;
-        }
-
-        .btn-upload {
-            background: var(--primary);
-            color: #000;
-            flex: 1;
-        }
-
-        .btn-delete {
-            background: var(--danger);
-            color: white;
-            padding: 12px 20px;
-        }
-
-        .btn:hover { opacity: 0.8; transform: translateY(-2px); }
-
-        .status-text { 
-            font-size: 12px; 
-            color: #666; 
-            margin-top: 10px; 
-            text-align: center; 
-        }
-
-        /* إخفاء مدخل الملف الأصلي وتجميله */
-        #filePicker { display: none; }
-        .custom-file-label {
-            background: #222;
-            color: var(--primary);
-            border: 1px dashed var(--primary);
-            padding: 10px;
-            border-radius: 10px;
-            cursor: pointer;
-            flex: 2;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .status-text { margin-top: 10px; font-size: 12px; color: #666; }
     </style>
 </head>
 <body>
 
-    <div class="chat-container">
-        <div class="header">
-            <span style="font-weight: bold;">تزامن المحتوى الحي</span>
-            <div class="server-status">HEARTBEAT: <span id="timer">0</span></div>
+    <div class="container">
+        <div class="server-status">SERVER HEARTBEAT: <span id="timer">0</span></div>
+        <h2 style="margin-top:0">بث الحالات الشامل</h2>
+        
+        <div class="display-area">
+            <img id="display" alt="المحتوى المتزامن">
+            <a id="fileLink" href="#" target="_blank">📥 تحميل الملف المستلم</a>
+            <div id="msg" class="status-text">في انتظار اتصال...</div>
         </div>
 
-        <div class="content-area" id="chatBox">
-            <div id="displayContainer">
-                <div id="fileIcon" class="file-icon">📄</div>
-                <img id="display" alt="المحتوى المستلم">
-                <div id="fileName" style="margin-top:10px; font-weight:bold; color:var(--primary)"></div>
-            </div>
-        </div>
-
-        <div class="footer">
-            <div class="controls">
-                <label for="filePicker" class="custom-file-label" id="fileLabel">اختر أي ملف لرفعه...</label>
-                <input type="file" id="filePicker">
-                
-                <button id="deleteBtn" class="btn btn-delete">حذف</button>
-            </div>
-            <div id="msg" class="status-text">جاهز للمزامنة</div>
+        <div class="controls">
+            <input type="file" id="filePicker">
+            <button id="clearBtn" class="delete-btn">حذف العرض الحالي</button>
         </div>
     </div>
 
     <script type="module">
         import { StateEngine } from './engine.js';
 
-        const fileLabel = document.getElementById('fileLabel');
-        const imgDisplay = document.getElementById('display');
-        const fileIcon = document.getElementById('fileIcon');
-        const fileNameDiv = document.getElementById('fileName');
+        const img = document.getElementById('display');
+        const link = document.getElementById('fileLink');
+        const msg = document.getElementById('msg');
 
-        // ربط المحرك بالواجهة المحدثة
+        // ربط المحرك بالواجهة
         const engine = new StateEngine({
-            onNewState: (dataUrl, fileType) => {
-                // تصفير العرض السابق
-                imgDisplay.style.display = 'none';
-                fileIcon.style.display = 'none';
-                
-                if (fileType.startsWith('image/')) {
-                    imgDisplay.src = dataUrl;
-                    imgDisplay.style.display = 'block';
-                    fileNameDiv.innerText = "تم استلام صورة";
+            onNewState: (dataUrl) => {
+                // فحص نوع البيانات المستلمة (بسيط)
+                if (dataUrl.startsWith('data:image/')) {
+                    link.style.display = 'none';
+                    img.src = dataUrl;
+                    img.style.display = 'block';
                 } else {
-                    fileIcon.style.display = 'block';
-                    fileNameDiv.innerHTML = `<a href="${dataUrl}" download="file" style="color:inherit; text-decoration:none;">تحميل الملف المستلم 📥</a>`;
+                    img.style.display = 'none';
+                    link.href = dataUrl;
+                    link.style.display = 'block';
+                    link.innerText = "📥 تحميل ملف جديد (مستند/ملف)";
                 }
             },
             onStatusChange: (text) => {
-                document.getElementById('msg').innerText = text;
+                msg.innerText = text;
             },
             onHeartbeat: (val) => {
                 document.getElementById('timer').innerText = val;
             }
         });
 
-        // حدث اختيار ملف
+        // حدث اختيار ملف (يرسل أي نوع ملف الآن)
         document.getElementById('filePicker').onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                fileLabel.innerText = file.name;
-                engine.sendFile(file);
+            if (e.target.files[0]) {
+                engine.sendFile(e.target.files[0]);
             }
         };
 
-        // زر الحذف (تفريغ الواجهة محلياً)
-        document.getElementById('deleteBtn').onclick = () => {
-            imgDisplay.style.display = 'none';
-            fileIcon.style.display = 'none';
-            fileNameDiv.innerText = "";
-            fileLabel.innerText = "اختر أي ملف لرفعه...";
-            document.getElementById('msg').innerText = "تم حذف العرض محلياً";
+        // زر الحذف
+        document.getElementById('clearBtn').onclick = () => {
+            img.style.display = 'none';
+            img.src = "";
+            link.style.display = 'none';
+            msg.innerText = "تم تنظيف الواجهة.";
         };
     </script>
 </body>
