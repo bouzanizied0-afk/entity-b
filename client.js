@@ -1,4 +1,4 @@
-// ==================== client.js (المطور) ====================
+// ==================== client.js (النسخة المتكاملة) ====================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-app.js";
 import { getDatabase, ref, set, onValue, onChildAdded } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-database.js";
 
@@ -16,7 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const streamRef = ref(db, "temporal/stream");
-const syncProgressRef = ref(db, "temporal/sync_progress"); // مرجع النسبة المئوية
+const syncProgressRef = ref(db, "temporal/sync_progress");
 
 // --------------------- مرحلة 1: تفكيك الملف ---------------------
 async function extract(file) {
@@ -25,7 +25,7 @@ async function extract(file) {
 }
 
 // --------------------- مرحلة 2: تقسيم إلى Chunks ---------------------
-function encode(bytes, chunkSize = 16384) { // تكبير الحجم قليلاً لسرعة الفيديو
+function encode(bytes, chunkSize = 16384) { 
   const chunks = [];
   let counter = 0;
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -48,13 +48,13 @@ async function sendChunks(chunks) {
 
       const percent = Math.floor(((chunk.counter + 1) / chunks.length) * 100);
       
-      // تحديث النسبة محلياً وإرسالها للخادم ليراها الطرف الآخر
-      if (progressBar) progressBar.textContent = `Progress: ${percent}%`;
-      if (counterDisplay) counterDisplay.textContent = chunk.counter;
+      if (progressBar) progressBar.textContent = `Sending: ${percent}%`;
+      if (counterDisplay) counterDisplay.textContent = `Chunk: ${chunk.counter}`;
       
-      await set(syncProgressRef, percent); // بث النسبة مئوية لحظياً
+      // بث النسبة مئوية لحظياً للطرف الآخر
+      await set(syncProgressRef, percent); 
 
-      // سرعة الإرسال (تقليل التأخير لملفات الفيديو)
+      // تأخير بسيط جداً لضمان ثبات البث
       await new Promise(r => setTimeout(r, 2)); 
 
     } catch (err) {
@@ -66,13 +66,15 @@ async function sendChunks(chunks) {
 
 // --------------------- مرحلة 4: Listener تلقائي للمستقبل ---------------------
 const receivedChunks = [];
-const imageDisplay = document.getElementById("imageDisplay");
 
 // استماع للنسبة المئوية القادمة من الطرف الآخر
 onValue(syncProgressRef, (snapshot) => {
     const percent = snapshot.val() || 0;
     const progressBar = document.getElementById("progressDisplay");
-    if (progressBar) progressBar.textContent = `Receiving: ${percent}%`;
+    if (progressBar) {
+        progressBar.style.display = "block";
+        progressBar.textContent = `Syncing: ${percent}%`;
+    }
 });
 
 onChildAdded(streamRef, (snapshot) => {
@@ -81,10 +83,10 @@ onChildAdded(streamRef, (snapshot) => {
   receivedChunks[counter] = data;
 
   const counterDisplay = document.getElementById("counterDisplay");
-  if (counterDisplay) counterDisplay.textContent = counter;
+  if (counterDisplay) counterDisplay.textContent = `Receiving Chunk: ${counter}`;
 
-  // إعادة بناء تدريجي
-  const byteArrays = receivedChunks.filter(c => c).map(c => Uint8Array.from(c));
+  // إعادة بناء المصفوفة
+  const byteArrays = receivedChunks.filter(c => c !== undefined).map(c => Uint8Array.from(c));
   const totalLength = byteArrays.reduce((sum, arr) => sum + arr.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
@@ -93,14 +95,16 @@ onChildAdded(streamRef, (snapshot) => {
     offset += arr.length;
   }
 
-  if (imageDisplay) {
+  // التعامل مع العرض (صورة أو فيديو)
+  const displayElement = document.getElementById("imageDisplay") || document.getElementById("videoDisplay");
+  if (displayElement) {
     const blob = new Blob([result]);
     const url = URL.createObjectURL(blob);
-    imageDisplay.src = url;
+    displayElement.src = url;
     
-    // إذا كان ميديا (فيديو/صوت) حاول التشغيل التلقائي
-    if (imageDisplay.tagName === 'VIDEO' || imageDisplay.tagName === 'AUDIO') {
-        imageDisplay.play().catch(() => {}); 
+    // تشغيل تلقائي إذا كان فيديو
+    if (displayElement.tagName === 'VIDEO') {
+        displayElement.play().catch(() => console.log("Waiting for user interaction to play video"));
     }
   }
 });
@@ -111,27 +115,51 @@ document.getElementById("send").onclick = async () => {
   const file = fileInput.files[0];
   if (!file) return alert("اختر ملفاً أولاً");
 
-  // تصفير البيانات القديمة قبل الإرسال الجديد
+  // تنظيف الخادم قبل الإرسال الجديد
   await set(streamRef, null);
   await set(syncProgressRef, 0);
 
   const bytes = await extract(file);
   const chunks = encode(bytes);
 
-  // التأكد من وجود عناصر العرض
-  prepareUI();
+  prepareUI(file.type);
 
   await sendChunks(chunks);
 };
 
-function prepareUI() {
-    if (!document.getElementById("progressDisplay")) {
-        const p = document.createElement("div");
-        p.id = "progressDisplay";
-        p.style.cssText = "margin-top: 10px; font-weight: bold; color: #00d4ff;";
-        document.body.appendChild(p);
+// وظيفة تجهيز واجهة العرض بناءً على نوع الملف
+function prepareUI(fileType) {
+    let displayArea = document.getElementById("displayArea");
+    if (!displayArea) {
+        displayArea = document.createElement("div");
+        displayArea.id = "displayArea";
+        document.body.appendChild(displayArea);
     }
-    // ... باقي عناصر العرض كما هي في كودك الأصلي ...
-}
+    displayArea.innerHTML = ""; // تنظيف قديم
 
-// (باقي كود الرسائل النصية يبقى كما هو دون تغيير)
+    // إنشاء العداد
+    const p = document.createElement("div");
+    p.id = "progressDisplay";
+    p.style.cssText = "margin-top: 10px; font-weight: bold; color: #00d4ff;";
+    displayArea.appendChild(p);
+
+    const c = document.createElement("div");
+    c.id = "counterDisplay";
+    c.style.cssText = "font-size: 10px; color: #555;";
+    displayArea.appendChild(c);
+
+    // اختيار العنصر المناسب (فيديو أم صورة)
+    if (fileType.startsWith("video/")) {
+        const video = document.createElement("video");
+        video.id = "videoDisplay";
+        video.controls = true;
+        video.autoplay = true;
+        video.style.maxWidth = "100%";
+        displayArea.appendChild(video);
+    } else {
+        const img = document.createElement("img");
+        img.id = "imageDisplay";
+        img.style.maxWidth = "100%";
+        displayArea.appendChild(img);
+    }
+}
