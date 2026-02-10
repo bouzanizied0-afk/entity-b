@@ -1,6 +1,6 @@
 // ==================== client.js ====================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-app.js";
-import { getDatabase, ref, set, push, get, child } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-database.js";
+import { getDatabase, ref, set, push, onChildAdded } from "https://www.gstatic.com/firebasejs/9.30.0/firebase-database.js";
 
 // ---------------- Firebase config ----------------
 const firebaseConfig = {
@@ -45,14 +45,11 @@ async function sendChunks(chunks) {
     try {
       await set(chunkRef, chunk.value);
 
-      // تحديث العداد
+      // تحديث العداد وشريط التقدم للطرف المرسل
       if (counterDisplay) counterDisplay.textContent = chunk.counter;
-
-      // تحديث شريط التقدم
       const percent = Math.floor(((chunk.counter + 1) / chunks.length) * 100);
       if (progressBar) progressBar.textContent = `Progress: ${percent}%`;
 
-      // نبضة صغيرة لرؤية الحركة
       await new Promise(r => setTimeout(r, 5));
 
     } catch (err) {
@@ -61,26 +58,23 @@ async function sendChunks(chunks) {
       break;
     }
   }
-  alert("تم الإرسال بنجاح!");
 }
 
-// --------------------- مرحلة 4: سحب Chunks وإعادة البناء ---------------------
-async function fetchChunks() {
-  const snapshot = await get(streamRef);
+// --------------------- مرحلة 4: Listener تلقائي للطرف المستقبل ---------------------
+const receivedChunks = [];
+const imageDisplay = document.getElementById("imageDisplay");
+
+onChildAdded(streamRef, (snapshot) => {
   const data = snapshot.val();
-  if (!data) return [];
+  const counter = parseInt(snapshot.key);
+  receivedChunks[counter] = data;
 
-  const chunks = Object.keys(data).map(key => ({
-    counter: parseInt(key),
-    value: data[key]
-  }));
+  // تحديث العداد على الطرف المستقبل
+  const counterDisplay = document.getElementById("counterDisplay");
+  if (counterDisplay) counterDisplay.textContent = counter;
 
-  chunks.sort((a, b) => a.counter - b.counter);
-  return chunks;
-}
-
-function reconstruct(chunks) {
-  const byteArrays = chunks.map(c => Uint8Array.from(c.value));
+  // إعادة بناء الصورة تدريجيًا
+  const byteArrays = receivedChunks.filter(c => c).map(c => Uint8Array.from(c));
   const totalLength = byteArrays.reduce((sum, arr) => sum + arr.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
@@ -88,16 +82,13 @@ function reconstruct(chunks) {
     result.set(arr, offset);
     offset += arr.length;
   }
-  return result;
-}
 
-function downloadFile(bytes, filename = "reconstructed.bin") {
-  const blob = new Blob([bytes]);
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
+  // عرض الصورة تدريجيًا
+  if (imageDisplay) {
+    const blob = new Blob([result]);
+    imageDisplay.src = URL.createObjectURL(blob);
+  }
+});
 
 // --------------------- ربط الأزرار ---------------------
 document.getElementById("send").onclick = async () => {
@@ -121,18 +112,19 @@ document.getElementById("send").onclick = async () => {
     document.body.appendChild(c);
   }
 
+  if (!document.getElementById("imageDisplay")) {
+    const img = document.createElement("img");
+    img.id = "imageDisplay";
+    img.style.display = "block";
+    img.style.marginTop = "10px";
+    img.style.maxWidth = "300px";
+    document.body.appendChild(img);
+  }
+
   await sendChunks(chunks);
 };
 
-document.getElementById("rebuild").onclick = async () => {
-  const chunks = await fetchChunks();
-  if (!chunks.length) return alert("لا توجد بيانات لإعادة البناء");
-
-  const bytes = reconstruct(chunks);
-  downloadFile(bytes);
-};
-
-// --------------------- دعم الرسائل النصية (خانة دردشة) ---------------------
+// --------------------- دعم الرسائل النصية ---------------------
 const chatInput = document.getElementById("chatInput");
 const chatDisplay = document.getElementById("chatDisplay");
 const sendMsgBtn = document.getElementById("sendMsgBtn");
