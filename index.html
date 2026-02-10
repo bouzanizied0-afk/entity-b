@@ -40,35 +40,17 @@
             projectId: "setouchi-it",
         };
 
- const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
 
-let localT = 0;
+        let localT = 0;
 
-// --------------------- عداد متزامن كل ثانية ---------------------
-const heartbeatRef = ref(db, "system/heartbeat");
+        // 1. تحديث عداد الخادم للتحقق من الاتصال
+        onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
 
-setInterval(async () => {
-    try {
-        const snap = await get(heartbeatRef);
-        let current = snap.val() || 0;
-        current = (current >= 10) ? 0 : current + 1;
-        await set(heartbeatRef, current);
-    } catch (err) {
-        console.error("خطأ تحديث عداد heartbeat:", err);
-    }
-      }, 1000);
-
-      // --------------------- تحديث واجهة المستخدم لعرض العداد ---------------------
-     onValue(heartbeatRef, (snap) => {
-    const timerEl = document.getElementById("serverTimer");
-    if (timerEl) timerEl.innerText = snap.val() || 0;
-      });
-
-       // 2. الاستماع والمزامنة التلقائية (الميزة المطلوبة)
-      onValue(ref(db, "temporal/counter"), async (snap) => {
-    const serverT = snap.val();
-    
+        // 2. الاستماع والمزامنة التلقائية (الميزة المطلوبة)
+        onValue(ref(db, "temporal/counter"), async (snap) => {
+            const serverT = snap.val();
             
             // إذا كان العداد على الخادم أكبر من العداد المحلي، يعني هناك صورة جديدة
             if (serverT && serverT > localT) {
