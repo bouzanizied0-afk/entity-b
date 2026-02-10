@@ -1,123 +1,74 @@
-/* =========================================================
-   TEMPORAL DETERMINISTIC SYNCHRONIZATION SYSTEM
-   Firebase Version (Blind Relay)
-   ========================================================= */
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>اختبار نظام التزامن للملفات</title>
+  <style>
+    body { font-family: sans-serif; background: #f0f0f0; padding: 30px; }
+    .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);}
+    h1 { text-align: center; color: #333; }
+    input[type="file"] { display: block; margin: 20px 0; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    #log { margin-top: 20px; background: #f9f9f9; padding: 10px; height: 200px; overflow-y: auto; border: 1px solid #ccc; border-radius: 4px; }
+    #reconstructedFile { margin-top: 20px; }
+  </style>
+</head>
+<body>
 
-const { initializeApp } = require('firebase/app');
-const { getDatabase, ref, set, onValue } = require('firebase/database');
-const fs = require("fs");
+  <div class="container">
+    <h1>🗂 تجربة إرسال ملف بالتزامن الحتمي</h1>
 
-/* ===================== Firebase Configuration ===================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
-  authDomain: "setouchi-it.firebaseapp.com",
-  databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
-  projectId: "setouchi-it"
-};
+    <input type="file" id="fileInput" />
+    <button id="sendBtn">إرسال الملف</button>
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+    <div id="log"></div>
 
-/* ===================== 1. LOCAL GLOBAL COUNTER ===================== */
-let LOCAL_T = 0;
+    <div id="reconstructedFile">
+      <h3>الملف المسترجع:</h3>
+      <a id="downloadLink" href="#" download="reconstructed_file.bin">تحميل الملف المسترجع</a>
+    </div>
+  </div>
 
-function tick() {
-  LOCAL_T += 1;
-  return LOCAL_T;
-}
+  <!-- ربط engins.js -->
+  <script type="module">
+    import { generatorSend, receiverListen } from './engins.js';
 
-function currentT() {
-  return LOCAL_T;
-}
+    const fileInput = document.getElementById("fileInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const log = document.getElementById("log");
+    const downloadLink = document.getElementById("downloadLink");
 
-/* ===================== 2. UNIVERSAL LOCAL DECOMPOSITION ===================== */
-function decomposeFile(path) {
-  const buffer = fs.readFileSync(path);
-  const Q = new Array(buffer.length);
-
-  for (let i = 0; i < buffer.length; i++) {
-    Q[i] = ((buffer[i] * 31) + i) % 104729;
-  }
-
-  return Q;
-}
-
-/* ===================== 3. STATE EQUATION ===================== */
-function stateEquation(T, Qlen) {
-  const start = (T * 37 + Qlen * 13) % Qlen;
-  const end   = (T * 17 + Qlen * 19) % Qlen;
-  const pivot = (start + end + T) % Qlen;
-  return { T, start, end, pivot, Qlen };
-}
-
-/* ===================== 4. EMIT STATE TO FIREBASE ===================== */
-async function generatorSend(filePath, file_id = 0) {
-  const Q = decomposeFile(filePath);
-  const T = tick(); // ✅ حتمي محليًا
-  const state = stateEquation(T, Q.length);
-
-  // إرسال الحالة فقط، لا يغير التزامن
-  const streamRef = ref(db, `temporal/stream/state_${T}`);
-  await set(streamRef, {
-    file_id,
-    ...state
-  });
-
-  console.log(`✅ تم إرسال الحالة T=${T} إلى مسار السيرفر.`);
-}
-
-/* ===================== 5. RECEIVER: LISTEN & RECONSTRUCT ===================== */
-function receiverListen(outputPath, expectedQlen) {
-  const streamRef = ref(db, "temporal/stream");
-  console.log("👂 في انتظار حالات جديدة من السيرفر...");
-
-  onValue(streamRef, (snapshot) => {
-    const data = snapshot.val();
-    if (!data) return;
-
-    // اختر الحالة التي تتوافق مع العداد المحلي المتوقع
-    const keys = Object.keys(data).map(k => parseInt(k)).sort((a,b)=>a-b);
-    for (const key of keys) {
-      if (key !== currentT() + 1) continue; // فقط الحالة التالية المتوقعة
-
-      const state = data[key];
-      LOCAL_T = state.T; // تحديث العداد المحلي بشكل حتمي
-
-      const Q = regenerateQueue(state.Qlen || expectedQlen);
-      const file = assemble(Q, state.start, state.end, state.pivot);
-      fs.writeFileSync(outputPath, file);
-
-      console.log(`💾 تم حفظ الملف المسترجع في: ${outputPath} (T=${state.T})`);
-      break; // معالجة حالة واحدة فقط لكل tick
+    // تسجيل الأحداث في صندوق اللوج
+    function logMessage(msg) {
+      log.innerHTML += `<div>${msg}</div>`;
+      log.scrollTop = log.scrollHeight;
     }
-  });
-}
 
-/* ===================== 6. QUEUE REGENERATION ===================== */
-function regenerateQueue(Qlen) {
-  const Q = new Array(Qlen);
-  for (let i = 0; i < Qlen; i++) {
-    Q[i] = ((i * 31) + i) % 104729;
-  }
-  return Q;
-}
+    // إرسال الملف
+    sendBtn.addEventListener("click", async () => {
+      if (!fileInput.files.length) {
+        alert("اختر ملفًا أولاً");
+        return;
+      }
 
-/* ===================== 7. ASSEMBLY ===================== */
-function assemble(Q, start, end, pivot) {
-  const a = Math.min(start, end);
-  const b = Math.max(start, end);
+      const file = fileInput.files[0];
+      logMessage(`📤 جاري إرسال الملف: ${file.name}`);
 
-  const out = [];
-  for (let i = a; i <= b; i++) {
-    out.push(Q[(i + pivot) % Q.length] & 0xFF);
-  }
-  return Buffer.from(out);
-}
+      // لتحويل File إلى مسار / buffer محلي
+      // هنا نفترض أن engins.js يدعم FileReader API
+      await generatorSend(file, 0);
 
-/* ===================== EXPORT ===================== */
-module.exports = {
-  generatorSend,
-  receiverListen,
-  tick,
-  currentT
-};
+      logMessage(`✅ تم الإعلان عن حالة الملف على Firebase`);
+    });
+
+    // استقبال الملف المسترجع
+    const outputPath = "reconstructed_file.bin"; // اسم الملف في النظام المحلي / Node
+    const expectedQlen = 1024; // يجب تعديله حسب حجم الملف أو الاتفاق المسبق
+
+    receiverListen(outputPath, expectedQlen);
+
+    logMessage("👂 النظام في انتظار ملفات من Firebase...");
+  </script>
+
+</body>
+</html>
