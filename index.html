@@ -2,35 +2,38 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام تزامن الحالات - مؤشر اتصال حي</title>
+    <title>نظام تزامن الحالات الشامل</title>
     <style>
         body { font-family: sans-serif; background: #1a1a1a; color: #eee; display: flex; flex-direction: column; align-items: center; padding: 50px; }
-        .container { background: #2a2a2a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; position: relative; }
-        
-        /* تصميم مؤشر اتصال الخادم */
+        .container { background: #2a2a2a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; position: relative; text-align: center; }
         .server-status { position: absolute; top: 10px; left: 10px; background: #000; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; font-family: monospace; font-size: 12px; color: #0f0; }
-        
         input[type="file"] { margin: 20px 0; width: 100%; }
-        .progress-bar { width: 100%; background: #444; height: 20px; border-radius: 10px; overflow: hidden; display: none; }
+        .progress-bar { width: 100%; background: #444; height: 20px; border-radius: 10px; overflow: hidden; display: none; margin-bottom: 10px; }
         .progress-fill { width: 0%; height: 100%; background: #4caf50; transition: width 0.1s; }
         .status { margin-top: 15px; font-size: 0.9em; color: #bbb; }
-        .marker-info { font-family: monospace; background: #000; padding: 10px; margin-top: 10px; border-radius: 4px; display: none; word-break: break-all; }
+        #rebuildBtn { margin-top: 20px; padding: 12px 20px; background: #e91e63; color: white; border: none; border-radius: 5px; cursor: pointer; display: none; width: 100%; font-weight: bold; }
+        #resultImg { margin-top: 20px; max-width: 100%; border: 2px solid #444; display: none; }
+        .marker-info { font-family: monospace; background: #000; padding: 10px; margin-top: 10px; border-radius: 4px; display: none; font-size: 10px; word-break: break-all; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <div class="server-status">خادم: <span id="serverTimer">0</span>/10</div>
-
-        <h2>تزامن الحالة (حتمي)</h2>
+        <h2>تزامن الحالة الذكي</h2>
+        
         <input type="file" id="fileInput">
         
         <div class="progress-bar" id="progressWrapper">
             <div class="progress-fill" id="progressFill"></div>
         </div>
         
-        <div class="status" id="statusText">جاهز لتوليد الحالة...</div>
+        <div id="statusText" class="status">جاهز...</div>
+        
+        <button id="rebuildBtn">تركيب الحالة المستلمة الآن ⚡</button>
+        
         <div class="marker-info" id="markerDisplay"></div>
+        <img id="resultImg" alt="النتيجة المركبة">
     </div>
 
     <script type="module">
@@ -50,76 +53,103 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // --- العداد المستقل (تزامن الخادم الحي) ---
-        const timerRef = ref(db, "system/heartbeat");
-        const timerElement = document.getElementById("serverTimer");
+        // --- محرك الحالة ---
+        class DeterministicEngine {
+            constructor() { this.T = 0; this.currentMarkers = null; }
+        }
+        const engine = new DeterministicEngine();
 
-        // الاستماع للعداد من الخادم
-        onValue(timerRef, (snap) => {
-            const val = snap.val() || 0;
-            timerElement.innerText = val;
+        // العناصر
+        const timerElement = document.getElementById("serverTimer");
+        const statusText = document.getElementById("statusText");
+        const rebuildBtn = document.getElementById("rebuildBtn");
+        const progressFill = document.getElementById("progressFill");
+        const progressWrapper = document.getElementById("progressWrapper");
+        const resultImg = document.getElementById("resultImg");
+
+        // 1. نبض الخادم (Heartbeat)
+        onValue(ref(db, "system/heartbeat"), (snap) => {
+            timerElement.innerText = snap.val() || 0;
         });
 
-        // تشغيل العداد تلقائياً (من 1 لـ 10) وتحديث الخادم
         setInterval(async () => {
             let current = parseInt(timerElement.innerText);
-            let next = current >= 10 ? 1 : current + 1;
-            await set(timerRef, next);
-        }, 2000); // يتحدث كل ثانيتين
+            await set(ref(db, "system/heartbeat"), current >= 10 ? 1 : current + 1);
+        }, 2000);
 
-
-        // --- كود المحرك الحتمي (كما هو دون تغيير في المنطق) ---
-        class DeterministicEngine {
-            constructor() { this.T = 0; }
-            async decompose(file, onProgress) {
-                const counterSnap = await get(ref(db, "temporal/counter"));
-                this.T = (counterSnap.val() || 0) + 1;
-
-                const buffer = await file.arrayBuffer();
-                const uint8 = new Uint8Array(buffer);
-                const Qlen = uint8.length;
-                
-                for (let i = 0; i < Qlen; i++) {
-                    if (i % 1000 === 0) {
-                        onProgress(Math.round((i / Qlen) * 100));
-                        await new Promise(r => setTimeout(r, 0));
-                    }
-                }
-                onProgress(100);
-                const start = (this.T * 31 + Qlen * 7) % Qlen;
-                const end = (this.T * 17 + Qlen * 13) % Qlen;
-                const mid = Math.floor((start + end) / 2);
-                return { start, mid, end, T: this.T, Qlen };
+        // 2. الاستماع لوصول حالات جديدة (للمتصفح المستقبل)
+        onValue(ref(db, "temporal/counter"), async (snap) => {
+            const serverT = snap.val();
+            if (serverT && serverT > engine.T) {
+                statusText.innerText = "تنبيه: حالة جديدة متوفرة على الخادم!";
+                const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
+                engine.currentMarkers = stateSnap.val();
+                rebuildBtn.style.display = "block"; // إظهار زر التركيب
             }
-        }
+        });
 
-        const engine = new DeterministicEngine();
-        const fileInput = document.getElementById('fileInput');
-        const progressWrapper = document.getElementById('progressWrapper');
-        const progressFill = document.getElementById('progressFill');
-        const statusText = document.getElementById('statusText');
-        const markerDisplay = document.getElementById('markerDisplay');
-
-        fileInput.addEventListener('change', async (e) => {
+        // 3. وظيفة الإرسال (تفكيك)
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             progressWrapper.style.display = 'block';
-            markerDisplay.style.display = 'none';
-            statusText.innerText = "جاري التفكيك...";
+            statusText.innerText = "جاري التفكيك المحلي...";
 
-            const markers = await engine.decompose(file, (percent) => {
-                progressFill.style.width = percent + '%';
-            });
+            const counterSnap = await get(ref(db, "temporal/counter"));
+            const nextT = (counterSnap.val() || 0) + 1;
 
-            // إرسال البيانات لمسارات التزامن الخاصة بك
-            await set(ref(db, `temporal/stream/state_${markers.T}`), markers);
-            await set(ref(db, "temporal/counter"), markers.T);
+            const buffer = await file.arrayBuffer();
+            const uint8 = new Uint8Array(buffer);
+            const Qlen = uint8.length;
 
-            statusText.innerText = "تم التزامن مع الخادم.";
-            markerDisplay.style.display = 'block';
-            markerDisplay.innerText = JSON.stringify(markers, null, 2);
+            // محاكاة التفكيك الحتمي
+            for (let i = 0; i < Qlen; i += 5000) {
+                progressFill.style.width = Math.round((i / Qlen) * 100) + '%';
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            const markers = {
+                start: (nextT * 31 + Qlen * 7) % Qlen,
+                end: (nextT * 17 + Qlen * 13) % Qlen,
+                T: nextT,
+                Qlen: Qlen
+            };
+
+            await set(ref(db, `temporal/stream/state_${nextT}`), markers);
+            await set(ref(db, "temporal/counter"), nextT);
+            engine.T = nextT; // تحديث العداد المحلي لعدم تكرار استقبال نفس الحالة
+
+            statusText.innerText = "تم إرسال إحداثيات الحالة للخادم.";
+            progressWrapper.style.display = 'none';
         });
+
+        // 4. وظيفة التركيب (Reconstruction)
+        rebuildBtn.onclick = async () => {
+            if (!engine.currentMarkers) return;
+
+            statusText.innerText = "جاري تركيب البيانات حتمياً...";
+            const { T, Qlen, start, end } = engine.currentMarkers;
+
+            // بناء البيانات محلياً من العدم (بناءً على الترتيب والعداد)
+            const Q = new Uint8Array(Qlen);
+            for (let i = 0; i < Qlen; i++) {
+                Q[i] = (i + T) % 256; 
+            }
+
+            const a = Math.min(start, end);
+            const b = Math.max(start, end);
+            const finalData = Q.slice(a, b + 1);
+
+            // عرض النتيجة كصورة
+            const blob = new Blob([finalData], { type: "image/png" });
+            resultImg.src = URL.createObjectURL(blob);
+            resultImg.style.display = "block";
+            
+            statusText.innerText = "تمت عملية التركيب بنجاح!";
+            rebuildBtn.style.display = "none";
+            engine.T = T; // تحديث العداد ليتطابق مع الخادم
+        };
     </script>
 </body>
 </html>
