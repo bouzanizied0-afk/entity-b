@@ -2,149 +2,117 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام التزامن المتقدم - مرتبط بالسيرفر</title>
+    <title>نظام تزامن الصور الحقيقي</title>
     <style>
-        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { 
-            background: #111; 
-            padding: 25px; 
-            border-radius: 20px; 
-            border: 1px solid #333; 
-            width: 500px; 
-            min-height: 60vh; 
-            text-align: center; 
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        .server-status { font-family: monospace; font-size: 11px; color: #0f0; margin-bottom: 10px; }
-        .display-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        #display { max-width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 2px solid #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.3); }
-        #fileLink { display: none; color: #fff; background: #222; padding: 15px; border-radius: 10px; text-decoration: none; border: 1px dashed #00d4ff; margin-top: 10px; width: 80%; }
-        .controls { margin-top: 20px; display: flex; gap: 10px; flex-direction: column; }
-        input[type="file"] { background: #1a1a1a; padding: 10px; border-radius: 8px; box-sizing: border-box; color: #00d4ff; cursor: pointer; border: 1px solid #333; }
-        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .delete-btn:hover { background: #ff2400; }
-        .status-text { margin-top: 10px; font-size: 12px; color: #666; }
+        body { font-family: sans-serif; background: #121212; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 30px; }
+        .container { background: #1e1e1e; padding: 25px; border-radius: 15px; border: 1px solid #00ff41; width: 450px; text-align: center; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
+        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; }
+        input[type="file"] { margin: 20px 0; color: #00ff41; }
+        #rebuildBtn { display: none; width: 100%; padding: 15px; background: #00ff41; color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 1px solid #00ff41; border-radius: 8px; }
+        .progress-bar { width: 100%; background: #333; height: 10px; border-radius: 5px; display: none; margin: 10px 0; overflow: hidden; }
+        .progress-fill { width: 0%; height: 100%; background: #00ff41; transition: 0.3s; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="server-status">SERVER HEARTBEAT: <span id="timer">0</span>/10</div>
-        <h2 style="margin-top:0">بث الحالات الشامل</h2>
+        <div class="server-status">قناة التزامن النشطة: <span id="serverTimer">0</span></div>
+        <h2>تزامن محتوى حتمي</h2>
         
-        <div class="display-area">
-            <img id="display" alt="المحتوى المتزامن">
-            <a id="fileLink" href="#" target="_blank">📥 تحميل الملف المستلم</a>
-            <div id="msg" class="status-text">جاري الاتصال بالسيرفر...</div>
+        <input type="file" id="fileInput" accept="image/*">
+        
+        <div class="progress-bar" id="progressWrapper">
+            <div class="progress-fill" id="progressFill"></div>
         </div>
-
-        <div class="controls">
-            <input type="file" id="filePicker">
-            <button id="clearBtn" class="delete-btn">حذف العرض الحالي من السيرفر</button>
-        </div>
+        
+        <div id="statusText">انتظار الإدخال...</div>
+        
+        <button id="rebuildBtn">⚡ استرجاع وتركيب الصورة المستلمة</button>
+        <img id="resultImg">
     </div>
 
     <script type="module">
-        // 1. استيراد Firebase وربطه بالمسارات المستخرجة
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
             authDomain: "setouchi-it.firebaseapp.com",
             databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
             projectId: "setouchi-it",
-            storageBucket: "setouchi-it.appspot.com",
-            messagingSenderId: "456612217542",
-            appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // المسارات المطلوبة
-        const streamRef = ref(db, "temporal/stream");
-        const heartRef = ref(db, "system/heartbeat");
+        let localT = 0;
+        let incomingState = null;
 
-        const img = document.getElementById('display');
-        const link = document.getElementById('fileLink');
-        const msg = document.getElementById('msg');
-        const timerSpan = document.getElementById('timer');
+        // تحديث نبض النظام
+        onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
 
-        // --- وظيفة نبض السيرفر (Heartbeat) ---
-        onValue(heartRef, (snap) => {
-            timerSpan.innerText = snap.val() || 0;
+        // الاستماع للحالات الجديدة
+        onValue(ref(db, "temporal/counter"), async (snap) => {
+            const serverT = snap.val();
+            if (serverT && serverT > localT) {
+                const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
+                incomingState = stateSnap.val();
+                if (incomingState) {
+                    document.getElementById("statusText").innerText = "وصلت بيانات صورة حقيقية!";
+                    document.getElementById("rebuildBtn").style.display = "block";
+                }
+            }
         });
 
-        // تحديث العداد تلقائياً لبيان النشاط
-        setInterval(() => {
-            const current = parseInt(timerSpan.innerText);
-            set(heartRef, current >= 10 ? 1 : current + 1);
-        }, 3000);
-
-        // --- وظيفة استقبال البيانات من السيرفر ---
-        onValue(streamRef, (snap) => {
-            const data = snap.val();
-            if (!data) {
-                resetUI();
-                msg.innerText = "السيرفر فارغ حالياً.";
-                return;
-            }
-
-            // الحصول على آخر ملف تم رفعه
-            const keys = Object.keys(data);
-            const lastItem = data[keys[keys.length - 1]];
-            const dataUrl = lastItem.payload;
-
-            if (dataUrl.startsWith('data:image/')) {
-                link.style.display = 'none';
-                img.src = dataUrl;
-                img.style.display = 'block';
-            } else {
-                img.style.display = 'none';
-                link.href = dataUrl;
-                link.style.display = 'block';
-                link.innerText = "📥 تحميل ملف جديد (" + (lastItem.name || "ملف") + ")";
-            }
-            msg.innerText = "تم استلام تحديث جديد من السيرفر.";
-        });
-
-        // --- وظيفة إرسال الملف إلى السيرفر ---
-        document.getElementById('filePicker').onchange = (e) => {
+        // عملية التفكيك والإرسال (Sender)
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            msg.innerText = "جاري رفع الملف للسيرفر...";
+            reader.onload = async (event) => {
+                document.getElementById("progressWrapper").style.display = "block";
+                const arrayBuffer = event.target.result;
+                const uint8 = new Uint8Array(arrayBuffer);
+                
+                // تحويل مصفوفة البايتات إلى سلسلة نصية (Base64) لنقل المحتوى الحقيقي
+                const base64Data = btoa(String.fromCharCode.apply(null, uint8));
 
-            reader.onload = (event) => {
-                const payload = event.target.result;
-                // رفع البيانات للمسار temporal/stream
-                push(streamRef, {
-                    name: file.name,
-                    payload: payload,
-                    timestamp: Date.now()
-                });
-                msg.innerText = "تم الرفع بنجاح.";
+                const counterSnap = await get(ref(db, "temporal/counter"));
+                const nextT = (counterSnap.val() || 0) + 1;
+
+                const statePayload = {
+                    data: base64Data, // المحتوى الحقيقي مشفر
+                    T: nextT,
+                    type: file.type
+                };
+
+                await set(ref(db, `temporal/stream/state_${nextT}`), statePayload);
+                await set(ref(db, "temporal/counter"), nextT);
+                
+                localT = nextT;
+                document.getElementById("statusText").innerText = "تم إرسال الصورة بنجاح.";
+                document.getElementById("progressFill").style.width = "100%";
             };
-            reader.readAsDataURL(file);
-        };
+            reader.readAsArrayBuffer(file);
+        });
 
-        // --- وظيفة الحذف الشامل من السيرفر ---
-        document.getElementById('clearBtn').onclick = () => {
-            remove(streamRef).then(() => {
-                resetUI();
-                msg.innerText = "تم حذف البيانات من السيرفر.";
-            });
-        };
+        // عملية التركيب (Receiver)
+        document.getElementById("rebuildBtn").onclick = () => {
+            if (!incomingState) return;
 
-        function resetUI() {
-            img.style.display = 'none';
-            img.src = "";
-            link.style.display = 'none';
-        }
+            document.getElementById("statusText").innerText = "جاري إعادة بناء الصورة...";
+            
+            // تحويل Base64 kembali إلى صورة
+            const imgElement = document.getElementById("resultImg");
+            imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
+            imgElement.style.display = "block";
+            
+            localT = incomingState.T;
+            document.getElementById("rebuildBtn").style.display = "none";
+            document.getElementById("statusText").innerText = "تم التركيب! الصورة تظهر الآن.";
+        };
     </script>
 </body>
 </html>
