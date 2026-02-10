@@ -2,10 +2,14 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام تزامن الحالات الحتمي - متصل بـ Firebase</title>
+    <title>نظام تزامن الحالات - مؤشر اتصال حي</title>
     <style>
         body { font-family: sans-serif; background: #1a1a1a; color: #eee; display: flex; flex-direction: column; align-items: center; padding: 50px; }
-        .container { background: #2a2a2a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; }
+        .container { background: #2a2a2a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; position: relative; }
+        
+        /* تصميم مؤشر اتصال الخادم */
+        .server-status { position: absolute; top: 10px; left: 10px; background: #000; padding: 5px 10px; border-radius: 4px; border: 1px solid #444; font-family: monospace; font-size: 12px; color: #0f0; }
+        
         input[type="file"] { margin: 20px 0; width: 100%; }
         .progress-bar { width: 100%; background: #444; height: 20px; border-radius: 10px; overflow: hidden; display: none; }
         .progress-fill { width: 0%; height: 100%; background: #4caf50; transition: width 0.1s; }
@@ -16,6 +20,8 @@
 <body>
 
     <div class="container">
+        <div class="server-status">خادم: <span id="serverTimer">0</span>/10</div>
+
         <h2>تزامن الحالة (حتمي)</h2>
         <input type="file" id="fileInput">
         
@@ -29,9 +35,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // 1. إعدادات السيرفر (Firebase Config) التي استخرجناها
         const firebaseConfig = {
             apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
             authDomain: "setouchi-it.firebaseapp.com",
@@ -42,18 +47,31 @@
             appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
         };
 
-        // تهيئة Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // 2. المحرك الحتمي (Deterministic Engine)
-        class DeterministicEngine {
-            constructor() {
-                this.T = 0;
-            }
+        // --- العداد المستقل (تزامن الخادم الحي) ---
+        const timerRef = ref(db, "system/heartbeat");
+        const timerElement = document.getElementById("serverTimer");
 
+        // الاستماع للعداد من الخادم
+        onValue(timerRef, (snap) => {
+            const val = snap.val() || 0;
+            timerElement.innerText = val;
+        });
+
+        // تشغيل العداد تلقائياً (من 1 لـ 10) وتحديث الخادم
+        setInterval(async () => {
+            let current = parseInt(timerElement.innerText);
+            let next = current >= 10 ? 1 : current + 1;
+            await set(timerRef, next);
+        }, 2000); // يتحدث كل ثانيتين
+
+
+        // --- كود المحرك الحتمي (كما هو دون تغيير في المنطق) ---
+        class DeterministicEngine {
+            constructor() { this.T = 0; }
             async decompose(file, onProgress) {
-                // جلب العداد الحالي من السيرفر لمزامنته
                 const counterSnap = await get(ref(db, "temporal/counter"));
                 this.T = (counterSnap.val() || 0) + 1;
 
@@ -66,15 +84,11 @@
                         onProgress(Math.round((i / Qlen) * 100));
                         await new Promise(r => setTimeout(r, 0));
                     }
-                    const element = (uint8[i] + i + this.T) % 256;
                 }
-
                 onProgress(100);
-
                 const start = (this.T * 31 + Qlen * 7) % Qlen;
                 const end = (this.T * 17 + Qlen * 13) % Qlen;
                 const mid = Math.floor((start + end) / 2);
-
                 return { start, mid, end, T: this.T, Qlen };
             }
         }
@@ -92,27 +106,19 @@
 
             progressWrapper.style.display = 'block';
             markerDisplay.style.display = 'none';
-            statusText.innerText = "جاري التفكيك وإرسال الحالة إلى السيرفر...";
+            statusText.innerText = "جاري التفكيك...";
 
-            try {
-                // تنفيذ التفكيك
-                const markers = await engine.decompose(file, (percent) => {
-                    progressFill.style.width = percent + '%';
-                });
+            const markers = await engine.decompose(file, (percent) => {
+                progressFill.style.width = percent + '%';
+            });
 
-                // 3. إرسال البيانات إلى نفس مسارات السيرفر
-                // إرسال المؤشرات إلى مسار التزامن (stream) وتحديث العداد (counter)
-                await set(ref(db, `temporal/stream/state_${markers.T}`), markers);
-                await set(ref(db, "temporal/counter"), markers.T);
+            // إرسال البيانات لمسارات التزامن الخاصة بك
+            await set(ref(db, `temporal/stream/state_${markers.T}`), markers);
+            await set(ref(db, "temporal/counter"), markers.T);
 
-                statusText.innerText = "تم الإرسال إلى Firebase بنجاح!";
-                markerDisplay.style.display = 'block';
-                markerDisplay.innerText = "تم حفظ الحالة في: temporal/stream/state_" + markers.T + "\n" + JSON.stringify(markers, null, 2);
-
-            } catch (error) {
-                console.error(error);
-                statusText.innerText = "حدث خطأ أثناء الاتصال بالسيرفر.";
-            }
+            statusText.innerText = "تم التزامن مع الخادم.";
+            markerDisplay.style.display = 'block';
+            markerDisplay.innerText = JSON.stringify(markers, null, 2);
         });
     </script>
 </body>
