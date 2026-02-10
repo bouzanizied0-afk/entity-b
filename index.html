@@ -1,61 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar">
 <head>
+  <meta charset="UTF-8">
+  <title>نظام إرسال ملفات + دردشة</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 20px;
     }
-    #chatBox {
-      width: 100%;
-      height: 300px;
+    #chatDisplay {
       border: 1px solid #ccc;
+      height: 200px;
       overflow-y: auto;
       padding: 10px;
       margin-bottom: 10px;
+      background-color: #f9f9f9;
     }
-    .message {
-      margin: 5px 0;
+    #progressDisplay {
+      margin-top: 10px;
+      font-weight: bold;
     }
-    .message img {
+    #fileInput {
+      margin-bottom: 10px;
+    }
+    .chat-message {
+      margin-bottom: 5px;
+      padding: 3px 5px;
+      background-color: #e1f0ff;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    img.sent-image {
       max-width: 200px;
       display: block;
       margin-top: 5px;
-    }
-    #progressContainer {
-      width: 100%;
-      background-color: #f1f1f1;
       border: 1px solid #ccc;
-      height: 20px;
-      margin-bottom: 10px;
-      position: relative;
-    }
-    #progressBar {
-      height: 100%;
-      width: 0%;
-      background-color: #4caf50;
-      text-align: center;
-      color: white;
-      line-height: 20px;
     }
   </style>
 </head>
 <body>
-  <h3>الدردشة</h3>
-  <div id="chatBox"></div>
+  <h3>اختر ملف لإرساله:</h3>
+  <input type="file" id="fileInput"><br>
+  <button id="send">إرسال الملف</button>
+  <button id="rebuild">إعادة بناء الملف</button>
 
+  <div id="progressDisplay">Progress: 0%</div>
+
+  <h3>الدردشة:</h3>
+  <div id="chatDisplay"></div>
   <input type="text" id="chatInput" placeholder="اكتب رسالتك هنا...">
-  <button id="sendMsg">إرسال رسالة</button>
-  <br><br>
-
-  <h3>إرسال ملف</h3>
-  <input type="file" id="fileInput"><br><br>
-  <button id="sendFile">إرسال الملف</button>
-
-  <div id="progressContainer">
-    <div id="progressBar">0%</div>
-  </div>
+  <button id="sendMsgBtn">إرسال رسالة</button>
 
   <script src="client.js"></script>
+  <script>
+    // إضافة عرض الصورة مباشرة في الدردشة بعد الإرسال
+    const fileInput = document.getElementById("fileInput");
+    const sendBtn = document.getElementById("send");
+    const chatDisplay = document.getElementById("chatDisplay");
+
+    sendBtn.addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      // إنشاء عنصر صورة فارغة مؤقتة في الدردشة
+      const imgElem = document.createElement("img");
+      imgElem.className = "sent-image";
+      imgElem.alt = file.name;
+      chatDisplay.appendChild(imgElem);
+      chatDisplay.scrollTop = chatDisplay.scrollHeight;
+
+      // قراءة الملف كـ DataURL لعرضه أثناء الإرسال
+      const reader = new FileReader();
+      reader.onload = e => {
+        imgElem.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  </script>
 </body>
 </html>
