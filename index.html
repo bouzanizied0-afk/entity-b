@@ -1,42 +1,99 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <title>اختبار العداد</title>
+<meta charset="UTF-8">
+<title>دردشة متزامنة مع الخادم</title>
+<style>
+html,body{margin:0;height:100%;font-family:sans-serif;background:#0a0a0a;color:#eee}
+#chat{display:flex;flex-direction:column;height:100%}
+#msgs{flex:1;overflow:auto;padding:10px}
+.msg{margin:6px 0;padding:8px 12px;border-radius:10px;max-width:70%}
+.me{background:#00d4ff;color:#000;margin-left:auto}
+.other{background:#222}
+#bar{display:flex;padding:10px;gap:5px;border-top:1px solid #222}
+input[type=text]{flex:1;padding:8px;border-radius:8px;border:none}
+button{padding:8px 12px;border:none;border-radius:8px;background:#00d4ff;cursor:pointer}
+input[type=file]{display:none}
+img{max-width:200px;border-radius:8px}
+a{color:#00d4ff}
+</style>
 </head>
 <body>
 
-<h2>عداد الخادم:</h2>
-<div id="counter">0</div>
-<button id="inc">زيادة</button>
+<div id="chat">
+  <div id="msgs"></div>
+  <div id="bar">
+    <input id="text" placeholder="اكتب رسالة..." />
+    <button onclick="sendText()">إرسال</button>
+    <button onclick="file.click()">📎</button>
+    <input id="file" type="file" />
+  </div>
+</div>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { ref, push, onChildAdded, set, get } 
+from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-  const firebaseConfig = {
-    apiKey: "ضع_API_KEY_هنا",
-    authDomain: "zied-e3b78.firebaseapp.com",
-    databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app/",
-    projectId: "zied-e3b78"
-  };
+import { db, PATHS, startHeartbeat } from "./serverCore.js";
+import { StateEngine } from "./engine.js"; // محرك الملفات
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
+startHeartbeat(); // يبدأ عداد الخادم
 
-  const counterRef = ref(db, "test/counter");
+const msgsRef = ref(db, PATHS.stream);
+const msgsDiv = document.getElementById("msgs");
+const text = document.getElementById("text");
+const file = document.getElementById("file");
+const me = crypto.randomUUID();
 
-  // استماع مباشر
-  onValue(counterRef, (snap) => {
-    document.getElementById("counter").innerText = snap.val() ?? 0;
-  });
+// إنشاء محرك الحالة مع ربطه بالخادم
+const engine = new StateEngine({
+    onNewState: async (data) => {
+        // جلب الرقم التالي للعداد
+        const counterSnap = await get(ref(db, PATHS.counter));
+        const nextT = (counterSnap.val() || 0) + 1;
 
-  // زيادة العداد
-  document.getElementById("inc").onclick = async () => {
-    const snap = await get(counterRef);
-    const next = (snap.val() || 0) + 1;
-    await set(counterRef, next);
-  };
+        // حفظ الحالة على الخادم
+        await set(ref(db, `${PATHS.stream}/state_${nextT}`), { data, type: data.split(";")[0].replace("data:", "") });
+        await set(ref(db, PATHS.counter), nextT);
+
+        // دفع الرسالة للدردشة
+        push(msgsRef, { type: "img", data, uid: me });
+    },
+    onStatusChange: (status) => {
+        console.log(status);
+    }
+});
+
+// عرض الرسائل الجديدة
+function addMsg(html, mine){
+  const d=document.createElement("div");
+  d.className="msg "+(mine?"me":"other");
+  d.innerHTML=html;
+  msgsDiv.appendChild(d);
+  msgsDiv.scrollTop=msgsDiv.scrollHeight;
+}
+
+onChildAdded(msgsRef, s=>{
+  const m=s.val();
+  if(!m)return;
+  if(m.type==="text") addMsg(m.data,m.uid===me);
+  if(m.type==="img") addMsg(`<img src="${m.data}">`,m.uid===me);
+  if(m.type==="file") addMsg(`<a href="${m.data}" download>${m.name}</a>`,m.uid===me);
+});
+
+// إرسال نصوص
+window.sendText=()=>{
+  if(!text.value)return;
+  push(msgsRef,{type:"text",data:text.value,uid:me});
+  text.value="";
+};
+
+// إرسال الملفات مع الربط المباشر بمحرك الحالة
+file.onchange = () => {
+    const f = file.files[0];
+    if(!f) return;
+    engine.sendFile(f);
+};
 </script>
 
 </body>
