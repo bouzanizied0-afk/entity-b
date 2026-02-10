@@ -2,34 +2,31 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام تزامن الصور الحقيقي</title>
+    <title>نظام التزامن التلقائي الفوري</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 30px; }
-        .container { background: #1e1e1e; padding: 25px; border-radius: 15px; border: 1px solid #00ff41; width: 450px; text-align: center; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
-        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; }
-        input[type="file"] { margin: 20px 0; color: #00ff41; }
-        #rebuildBtn { display: none; width: 100%; padding: 15px; background: #00ff41; color: #000; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; }
-        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 1px solid #00ff41; border-radius: 8px; }
-        .progress-bar { width: 100%; background: #333; height: 10px; border-radius: 5px; display: none; margin: 10px 0; overflow: hidden; }
-        .progress-fill { width: 0%; height: 100%; background: #00ff41; transition: 0.3s; }
+        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; flex-direction: column; align-items: center; padding: 30px; }
+        .container { background: #111; padding: 25px; border-radius: 15px; border: 1px solid #00d4ff; width: 450px; text-align: center; box-shadow: 0 0 25px rgba(0,212,255,0.2); }
+        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; color: #555; }
+        input[type="file"] { margin: 20px 0; color: #00d4ff; }
+        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 2px solid #00d4ff; border-radius: 10px; animation: fadeIn 0.5s; }
+        .status { margin-top: 15px; font-size: 0.9em; color: #888; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        .loader { display: none; margin: 10px auto; border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="server-status">قناة التزامن النشطة: <span id="serverTimer">0</span></div>
-        <h2>تزامن محتوى حتمي</h2>
+        <div class="server-status">قناة المزامنة: <span id="serverTimer">0</span></div>
+        <h2>تزامن تلقائي (بث حي)</h2>
         
         <input type="file" id="fileInput" accept="image/*">
         
-        <div class="progress-bar" id="progressWrapper">
-            <div class="progress-fill" id="progressFill"></div>
-        </div>
+        <div class="loader" id="loader"></div>
+        <div id="statusText" class="status">في انتظار بيانات...</div>
         
-        <div id="statusText">انتظار الإدخال...</div>
-        
-        <button id="rebuildBtn">⚡ استرجاع وتركيب الصورة المستلمة</button>
-        <img id="resultImg">
+        <img id="resultImg" alt="الصورة المستلمة">
     </div>
 
     <script type="module">
@@ -47,72 +44,65 @@
         const db = getDatabase(app);
 
         let localT = 0;
-        let incomingState = null;
 
-        // تحديث نبض النظام
+        // 1. تحديث عداد الخادم للتحقق من الاتصال
         onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
 
-        // الاستماع للحالات الجديدة
+        // 2. الاستماع والمزامنة التلقائية (الميزة المطلوبة)
         onValue(ref(db, "temporal/counter"), async (snap) => {
             const serverT = snap.val();
+            
+            // إذا كان العداد على الخادم أكبر من العداد المحلي، يعني هناك صورة جديدة
             if (serverT && serverT > localT) {
+                localT = serverT; // تحديث العداد المحلي فوراً لمنع التكرار
+                
+                document.getElementById("statusText").innerText = "جاري جلب الصورة تلقائياً...";
+                document.getElementById("loader").style.display = "block";
+
                 const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
-                incomingState = stateSnap.val();
+                const incomingState = stateSnap.val();
+
                 if (incomingState) {
-                    document.getElementById("statusText").innerText = "وصلت بيانات صورة حقيقية!";
-                    document.getElementById("rebuildBtn").style.display = "block";
+                    const imgElement = document.getElementById("resultImg");
+                    imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
+                    imgElement.style.display = "block";
+                    
+                    document.getElementById("loader").style.display = "none";
+                    document.getElementById("statusText").innerText = "تم استلام صورة جديدة وتحديثها.";
                 }
             }
         });
 
-        // عملية التفكيك والإرسال (Sender)
+        // 3. عملية الإرسال
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
+            document.getElementById("statusText").innerText = "جاري معالجة الصورة وإرسالها...";
+            document.getElementById("loader").style.display = "block";
+
             const reader = new FileReader();
             reader.onload = async (event) => {
-                document.getElementById("progressWrapper").style.display = "block";
-                const arrayBuffer = event.target.result;
-                const uint8 = new Uint8Array(arrayBuffer);
-                
-                // تحويل مصفوفة البايتات إلى سلسلة نصية (Base64) لنقل المحتوى الحقيقي
-                const base64Data = btoa(String.fromCharCode.apply(null, uint8));
+                const base64Data = btoa(String.fromCharCode.apply(null, new Uint8Array(event.target.result)));
 
                 const counterSnap = await get(ref(db, "temporal/counter"));
                 const nextT = (counterSnap.val() || 0) + 1;
 
-                const statePayload = {
-                    data: base64Data, // المحتوى الحقيقي مشفر
+                const payload = {
+                    data: base64Data,
                     T: nextT,
                     type: file.type
                 };
 
-                await set(ref(db, `temporal/stream/state_${nextT}`), statePayload);
+                await set(ref(db, `temporal/stream/state_${nextT}`), payload);
                 await set(ref(db, "temporal/counter"), nextT);
                 
-                localT = nextT;
-                document.getElementById("statusText").innerText = "تم إرسال الصورة بنجاح.";
-                document.getElementById("progressFill").style.width = "100%";
+                localT = nextT; // المزامنة محلياً لعدم استقبال ما أرسلته أنا
+                document.getElementById("loader").style.display = "none";
+                document.getElementById("statusText").innerText = "تم الإرسال بنجاح.";
             };
             reader.readAsArrayBuffer(file);
         });
-
-        // عملية التركيب (Receiver)
-        document.getElementById("rebuildBtn").onclick = () => {
-            if (!incomingState) return;
-
-            document.getElementById("statusText").innerText = "جاري إعادة بناء الصورة...";
-            
-            // تحويل Base64 kembali إلى صورة
-            const imgElement = document.getElementById("resultImg");
-            imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
-            imgElement.style.display = "block";
-            
-            localT = incomingState.T;
-            document.getElementById("rebuildBtn").style.display = "none";
-            document.getElementById("statusText").innerText = "تم التركيب! الصورة تظهر الآن.";
-        };
     </script>
 </body>
 </html>
