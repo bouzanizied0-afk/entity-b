@@ -2,53 +2,42 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام التزامن المتقدم - النسخة المطورة</title>
+    <title>نظام التزامن التدفقي</title>
     <style>
         body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        
-        /* توسيع الحاوية لتشبه خانة الدردشة */
-        .container { 
-            background: #111; 
-            padding: 25px; 
-            border-radius: 20px; 
-            border: 1px solid #333; 
-            width: 500px; /* زيادة العرض */
-            min-height: 60vh; /* زيادة الطول */
-            text-align: center; 
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-
-        .server-status { font-family: monospace; font-size: 11px; color: #555; margin-bottom: 10px; }
-        
-        /* منطقة العرض */
+        .container { background: #111; padding: 25px; border-radius: 20px; border: 1px solid #333; width: 500px; min-height: 60vh; text-align: center; display: flex; flex-direction: column; justify-content: space-between; }
+        .server-status { font-family: monospace; font-size: 11px; color: #555; }
         .display-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         
-        #display { width: 100%; border-radius: 12px; margin-top: 10px; display: none; border: 2px solid #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.3); }
-        #fileLink { display: none; color: #fff; background: #222; padding: 15px; border-radius: 10px; text-decoration: none; border: 1px dashed #00d4ff; margin-top: 10px; width: 80%; }
+        #display, #videoDisplay { width: 100%; border-radius: 12px; display: none; border: 2px solid #00d4ff; }
         
-        /* أدوات التحكم */
-        .controls { margin-top: 20px; display: flex; gap: 10px; flex-direction: column; }
-        
-        input[type="file"] { background: #1a1a1a; padding: 10px; border-radius: 8px; box-sizing: border-box; color: #00d4ff; cursor: pointer; border: 1px solid #333; }
-        
-        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .delete-btn:hover { background: #ff2400; }
+        /* تصميم العداد المئوي */
+        .progress-container { width: 80%; background: #222; height: 10px; border-radius: 5px; margin-top: 15px; display: none; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: #00d4ff; transition: width 0.2s; }
+        #percentText { font-size: 14px; margin-top: 5px; font-weight: bold; display: none; }
 
+        .controls { margin-top: 20px; display: flex; gap: 10px; flex-direction: column; }
+        input[type="file"] { background: #1a1a1a; padding: 10px; border-radius: 8px; color: #00d4ff; cursor: pointer; border: 1px solid #333; }
+        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .status-text { margin-top: 10px; font-size: 12px; color: #666; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="server-status">SERVER HEARTBEAT: <span id="timer">0</span></div>
-        <h2 style="margin-top:0">بث الحالات الشامل</h2>
+        <div class="server-status">HEARTBEAT: <span id="timer">0</span></div>
+        <h2 style="margin-top:0">بث الحالات المتزامن</h2>
         
         <div class="display-area">
-            <img id="display" alt="المحتوى المتزامن">
-            <a id="fileLink" href="#" target="_blank">📥 تحميل الملف المستلم</a>
-            <div id="msg" class="status-text">في انتظار اتصال...</div>
+            <img id="display">
+            <video id="videoDisplay" controls autoplay></video>
+            
+            <div class="progress-container" id="progressWrapper">
+                <div id="progressBar"></div>
+            </div>
+            <div id="percentText">0%</div>
+            
+            <div id="msg" class="status-text">جاهز...</div>
         </div>
 
         <div class="controls">
@@ -61,45 +50,55 @@
         import { StateEngine } from './engine.js';
 
         const img = document.getElementById('display');
-        const link = document.getElementById('fileLink');
+        const video = document.getElementById('videoDisplay');
+        const wrapper = document.getElementById('progressWrapper');
+        const bar = document.getElementById('progressBar');
+        const pText = document.getElementById('percentText');
         const msg = document.getElementById('msg');
 
-        // ربط المحرك بالواجهة
         const engine = new StateEngine({
-            onNewState: (dataUrl) => {
-                // فحص نوع البيانات المستلمة (بسيط)
-                if (dataUrl.startsWith('data:image/')) {
-                    link.style.display = 'none';
+            onNewState: (dataUrl, type) => {
+                // إيقاف أي ميديا سابقة
+                img.style.display = 'none';
+                video.style.display = 'none';
+                video.pause();
+
+                if (type.startsWith('image/')) {
                     img.src = dataUrl;
                     img.style.display = 'block';
-                } else {
-                    img.style.display = 'none';
-                    link.href = dataUrl;
-                    link.style.display = 'block';
-                    link.innerText = "📥 تحميل ملف جديد (مستند/ملف)";
+                } else if (type.startsWith('video/') || type.startsWith('audio/')) {
+                    video.src = dataUrl;
+                    video.style.display = 'block';
+                    video.play().catch(e => console.log("التشغيل التلقائي يحتاج تفاعل"));
                 }
             },
-            onStatusChange: (text) => {
-                msg.innerText = text;
-            },
-            onHeartbeat: (val) => {
-                document.getElementById('timer').innerText = val;
+            onStatusChange: (text) => { msg.innerText = text; },
+            onHeartbeat: (val) => { document.getElementById('timer').innerText = val; },
+            
+            // إضافة Callback جديد لتحديث النسبة المئوية
+            onProgress: (percent) => {
+                wrapper.style.display = 'block';
+                pText.style.display = 'block';
+                bar.style.width = percent + '%';
+                pText.innerText = percent + '%';
+                if(percent >= 100) {
+                    setTimeout(() => { 
+                        wrapper.style.display = 'none'; 
+                        pText.style.display = 'none'; 
+                    }, 1000);
+                }
             }
         });
 
-        // حدث اختيار ملف (يرسل أي نوع ملف الآن)
         document.getElementById('filePicker').onchange = (e) => {
-            if (e.target.files[0]) {
-                engine.sendFile(e.target.files[0]);
-            }
+            if (e.target.files[0]) engine.sendFile(e.target.files[0]);
         };
 
-        // زر الحذف
         document.getElementById('clearBtn').onclick = () => {
             img.style.display = 'none';
-            img.src = "";
-            link.style.display = 'none';
-            msg.innerText = "تم تنظيف الواجهة.";
+            video.style.display = 'none';
+            video.pause();
+            msg.innerText = "تم التنظيف.";
         };
     </script>
 </body>
