@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام تزامن الحالات الحتمي</title>
+    <title>نظام تزامن الحالات الحتمي - متصل بـ Firebase</title>
     <style>
         body { font-family: sans-serif; background: #1a1a1a; color: #eee; display: flex; flex-direction: column; align-items: center; padding: 50px; }
         .container { background: #2a2a2a; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; }
@@ -10,7 +10,7 @@
         .progress-bar { width: 100%; background: #444; height: 20px; border-radius: 10px; overflow: hidden; display: none; }
         .progress-fill { width: 0%; height: 100%; background: #4caf50; transition: width 0.1s; }
         .status { margin-top: 15px; font-size: 0.9em; color: #bbb; }
-        .marker-info { font-family: monospace; background: #000; padding: 10px; margin-top: 10px; border-radius: 4px; display: none; }
+        .marker-info { font-family: monospace; background: #000; padding: 10px; margin-top: 10px; border-radius: 4px; display: none; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -27,33 +27,50 @@
         <div class="marker-info" id="markerDisplay"></div>
     </div>
 
-    <script>
-        // 1. المحرك الحتمي (Deterministic Engine)
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // 1. إعدادات السيرفر (Firebase Config) التي استخرجناها
+        const firebaseConfig = {
+            apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+            authDomain: "setouchi-it.firebaseapp.com",
+            databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/",
+            projectId: "setouchi-it",
+            storageBucket: "setouchi-it.appspot.com",
+            messagingSenderId: "456612217542",
+            appId: "1:456612217542:web:51d963523b1306e0bf4dc7"
+        };
+
+        // تهيئة Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 2. المحرك الحتمي (Deterministic Engine)
         class DeterministicEngine {
             constructor() {
                 this.T = 0;
             }
 
-            // محاكاة التفكيك مع تحديث النسبة المئوية
             async decompose(file, onProgress) {
-                this.T++; // زيادة العداد الزمني
+                // جلب العداد الحالي من السيرفر لمزامنته
+                const counterSnap = await get(ref(db, "temporal/counter"));
+                this.T = (counterSnap.val() || 0) + 1;
+
                 const buffer = await file.arrayBuffer();
                 const uint8 = new Uint8Array(buffer);
                 const Qlen = uint8.length;
                 
-                // عملية التفكيك المحلي (محاكاة حسابية)
                 for (let i = 0; i < Qlen; i++) {
-                    if (i % 1000 === 0) { // تحديث الواجهة كل 1000 عنصر
+                    if (i % 1000 === 0) {
                         onProgress(Math.round((i / Qlen) * 100));
-                        await new Promise(r => setTimeout(r, 0)); // السماح للمتصفح بالتحديث
+                        await new Promise(r => setTimeout(r, 0));
                     }
-                    // التفكيك الحتمي: (قيمة العنصر + الترتيب + العداد) % 256
                     const element = (uint8[i] + i + this.T) % 256;
                 }
 
                 onProgress(100);
 
-                // توليد المعادلة الحتمية E
                 const start = (this.T * 31 + Qlen * 7) % Qlen;
                 const end = (this.T * 17 + Qlen * 13) % Qlen;
                 const mid = Math.floor((start + end) / 2);
@@ -73,32 +90,29 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            // إعادة ضبط الواجهة
             progressWrapper.style.display = 'block';
             markerDisplay.style.display = 'none';
-            statusText.innerText = "جاري التفكيك وتوليد الحالة...";
+            statusText.innerText = "جاري التفكيك وإرسال الحالة إلى السيرفر...";
 
-            // بدء عملية التزامن
-            const markers = await engine.decompose(file, (percent) => {
-                progressFill.style.width = percent + '%';
-            });
+            try {
+                // تنفيذ التفكيك
+                const markers = await engine.decompose(file, (percent) => {
+                    progressFill.style.width = percent + '%';
+                });
 
-            // إظهار النتيجة (ما سيتم إرساله فعلياً)
-            statusText.innerText = "تم التزامن بنجاح. المؤشرات المرسلة:";
-            markerDisplay.style.display = 'block';
-            markerDisplay.innerText = JSON.stringify(markers, null, 2);
+                // 3. إرسال البيانات إلى نفس مسارات السيرفر
+                // إرسال المؤشرات إلى مسار التزامن (stream) وتحديث العداد (counter)
+                await set(ref(db, `temporal/stream/state_${markers.T}`), markers);
+                await set(ref(db, "temporal/counter"), markers.T);
 
-            // ملاحظة: هنا يتم إرسال 'markers' فقط إلى Firebase 
-            // لا يتم إرسال الملف نفسه أبداً.
-            console.log("Sent to Database:", markers);
-            
-            // محاكاة الإرسال إلى Firebase (اختياري)
-            /*
-            fetch('https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app/state.json', {
-                method: 'PUT',
-                body: JSON.stringify(markers)
-            });
-            */
+                statusText.innerText = "تم الإرسال إلى Firebase بنجاح!";
+                markerDisplay.style.display = 'block';
+                markerDisplay.innerText = "تم حفظ الحالة في: temporal/stream/state_" + markers.T + "\n" + JSON.stringify(markers, null, 2);
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "حدث خطأ أثناء الاتصال بالسيرفر.";
+            }
         });
     </script>
 </body>
