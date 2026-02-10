@@ -1,7 +1,13 @@
-/* ===================== إعدادات الاتصال بالسيرفر ===================== */
-const { initializeApp } = require('firebase/app');
-const { getDatabase, ref, set, onValue, get } = require('firebase/database');
+/* =========================================================
+   TEMPORAL DETERMINISTIC SYNCHRONIZATION SYSTEM
+   Firebase Version (Blind Relay)
+   ========================================================= */
 
+const { initializeApp } = require('firebase/app');
+const { getDatabase, ref, set, onValue } = require('firebase/database');
+const fs = require("fs");
+
+/* ===================== Firebase Configuration ===================== */
 const firebaseConfig = {
   apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
   authDomain: "setouchi-it.firebaseapp.com",
@@ -12,26 +18,27 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-/* ===================== 1. GLOBAL COUNTER (المزامنة مع السيرفر) ===================== */
+/* ===================== 1. LOCAL GLOBAL COUNTER ===================== */
+let LOCAL_T = 0;
 
-async function tick() {
-  const counterRef = ref(db, "temporal/counter");
-  const snap = await get(counterRef);
-  const currentT = snap.val() || 0;
-  const newT = currentT + 1;
-  await set(counterRef, newT);
-  return newT;
+function tick() {
+  LOCAL_T += 1;
+  return LOCAL_T;
 }
 
-/* ===================== 2. LOCAL DECOMPOSITION ===================== */
-const fs = require("fs");
+function currentT() {
+  return LOCAL_T;
+}
 
+/* ===================== 2. UNIVERSAL LOCAL DECOMPOSITION ===================== */
 function decomposeFile(path) {
   const buffer = fs.readFileSync(path);
   const Q = new Array(buffer.length);
+
   for (let i = 0; i < buffer.length; i++) {
     Q[i] = ((buffer[i] * 31) + i) % 104729;
   }
+
   return Q;
 }
 
@@ -43,40 +50,46 @@ function stateEquation(T, Qlen) {
   return { T, start, end, pivot, Qlen };
 }
 
-/* ===================== 5. FIREBASE RELAY (بديل الـ WebSocket) ===================== */
-
-// وظيفة لإرسال الحالة للسيرفر
+/* ===================== 4. EMIT STATE TO FIREBASE ===================== */
 async function generatorSend(filePath, file_id = 0) {
   const Q = decomposeFile(filePath);
-  const T = await tick(); // جلب العداد وتحديثه في السيرفر
+  const T = tick(); // ✅ حتمي محليًا
   const state = stateEquation(T, Q.length);
-  
+
+  // إرسال الحالة فقط، لا يغير التزامن
   const streamRef = ref(db, `temporal/stream/state_${T}`);
   await set(streamRef, {
     file_id,
     ...state
   });
+
   console.log(`✅ تم إرسال الحالة T=${T} إلى مسار السيرفر.`);
 }
 
-// وظيفة للاستماع للحالات القادمة من السيرفر وإعادة البناء
-function receiverListen(outputPath) {
+/* ===================== 5. RECEIVER: LISTEN & RECONSTRUCT ===================== */
+function receiverListen(outputPath, expectedQlen) {
   const streamRef = ref(db, "temporal/stream");
   console.log("👂 في انتظار حالات جديدة من السيرفر...");
-  
+
   onValue(streamRef, (snapshot) => {
     const data = snapshot.val();
     if (!data) return;
 
-    // الحصول على أحدث حالة مضافة
-    const lastKey = Object.keys(data).pop();
-    const state = data[lastKey];
+    // اختر الحالة التي تتوافق مع العداد المحلي المتوقع
+    const keys = Object.keys(data).map(k => parseInt(k)).sort((a,b)=>a-b);
+    for (const key of keys) {
+      if (key !== currentT() + 1) continue; // فقط الحالة التالية المتوقعة
 
-    console.log(`🔄 جاري إعادة بناء الحالة: ${lastKey}`);
-    const Q = regenerateQueue(state.Qlen);
-    const file = assemble(Q, state.start, state.end, state.pivot);
-    fs.writeFileSync(outputPath, file);
-    console.log(`💾 تم حفظ الملف المسترجع في: ${outputPath}`);
+      const state = data[key];
+      LOCAL_T = state.T; // تحديث العداد المحلي بشكل حتمي
+
+      const Q = regenerateQueue(state.Qlen || expectedQlen);
+      const file = assemble(Q, state.start, state.end, state.pivot);
+      fs.writeFileSync(outputPath, file);
+
+      console.log(`💾 تم حفظ الملف المسترجع في: ${outputPath} (T=${state.T})`);
+      break; // معالجة حالة واحدة فقط لكل tick
+    }
   });
 }
 
@@ -93,6 +106,7 @@ function regenerateQueue(Qlen) {
 function assemble(Q, start, end, pivot) {
   const a = Math.min(start, end);
   const b = Math.max(start, end);
+
   const out = [];
   for (let i = a; i <= b; i++) {
     out.push(Q[(i + pivot) % Q.length] & 0xFF);
@@ -104,5 +118,6 @@ function assemble(Q, start, end, pivot) {
 module.exports = {
   generatorSend,
   receiverListen,
-  tick
+  tick,
+  currentT
 };
