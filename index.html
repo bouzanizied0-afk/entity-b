@@ -13,9 +13,13 @@
         .bar { height: 100%; background: var(--neon); width: 0%; transition: 0.2s; shadow: 0 0 10px var(--neon); }
         .log-stream { height: 100px; overflow-y: auto; font-size: 11px; color: #666; background: #000; padding: 5px; }
         .btn { background: var(--neon); color: #000; border: none; padding: 12px; width: 100%; font-weight: bold; cursor: pointer; }
+        /* العداد الجديد */
+        .heartbeat-monitor { margin-bottom: 15px; font-size: 18px; color: #ffca28; border: 1px dashed #ffca28; padding: 5px 20px; border-radius: 50px; }
     </style>
 </head>
 <body>
+
+<div class="heartbeat-monitor">نبض الخادم العابر: <span id="globalCounter">0</span></div>
 
 <div class="engine-card">
     <h3 style="text-align: center; color: var(--neon);">نظام البث الذري v6.0</h3>
@@ -47,8 +51,25 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const CHUNK_SIZE = 1024 * 512; // 512KB لضمان الخفة
+    const CHUNK_SIZE = 1024 * 512; 
     let sessionID = Math.random().toString(36).substring(7);
+
+    // --- وظيفة العداد العالمي (الاختبار) ---
+    const counterRef = ref(db, 'system/globalTimer');
+    
+    // 1. الاستماع للعداد (للمتصفحين)
+    onValue(counterRef, (snapshot) => {
+        const val = snapshot.val() || 0;
+        document.getElementById('globalCounter').innerText = val;
+    });
+
+    // 2. تحديث العداد (متصفح واحد فقط يقوم بالمهمة لرفع الرقم)
+    setInterval(async () => {
+        const snap = await get(counterRef);
+        let current = snap.val() || 0;
+        let next = current >= 10 ? 1 : current + 1;
+        set(counterRef, next);
+    }, 2000); // تحديث كل ثانيتين
 
     function updateBar(id, percent) {
         document.getElementById(id + 'Bar').style.width = percent + '%';
@@ -86,7 +107,7 @@
         }
     };
 
-    // --- الاستقبال (أمريكا) ---
+    // --- الاستقبال (تونس/متصفح 2) ---
     let assembly = [];
     let lastIndex = -1;
 
@@ -101,7 +122,6 @@
         assembly[val.index] = decompressed;
         updateBar('recv', ((val.index + 1) / val.total) * 100);
 
-        // الحذف الفوري من الخادم بعد الاستلام (منطق الزبدة التي تختفي)
         await remove(ref(db, `stream/chunk`));
 
         if (assembly.filter(x => x).length === val.total) {
