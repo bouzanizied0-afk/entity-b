@@ -44,6 +44,16 @@ const text = document.getElementById("text");
 const file = document.getElementById("file");
 const me = crypto.randomUUID();
 
+// ================= ربط imageSync =================
+import { fingerprintImage, transmitFingerprint, listenAndReconstruct } from "./imageSync.js";
+
+// استقبال وبناء الصورة تدريجيًا
+listenAndReconstruct(db, (data) => {
+  console.log("تقدم الصورة:", data.length);
+  // يمكنك هنا رسم البيانات على canvas إذا أحببت
+});
+
+
 // إرسال النصوص
 window.sendText = () => {
   if(!text.value) return;
@@ -76,11 +86,18 @@ onChildAdded(msgsRef, s => {
 });
 
 // رفع الصور
-file.addEventListener('change', () => {
+file.addEventListener("change", async () => {
   const f = file.files[0];
-  if(!f) return;
+  if (!f) return;
+
+  /* 1️⃣ التفكيك المحلي + الإرسال الجزئي الفوري */
+  const fp = await fingerprintImage(f);
+  transmitFingerprint(db, fp);
+
+  /* 2️⃣ الإرسال الكامل في الخلفية */
   sendImage(f);
-  file.value="";
+
+  file.value = "";
 });
 
 // استقبال الصور فورًا
