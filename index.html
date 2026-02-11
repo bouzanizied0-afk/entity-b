@@ -2,36 +2,29 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Twin Engine - Stealth Mode</title>
+    <title>Twin Engine - Pure Numerical Mode</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .engine-box { border: 1px solid #00ff41; padding: 25px; border-radius: 12px; width: 520px; background: #000; box-shadow: 0 0 25px rgba(0,255,65,0.15); text-align: center; }
+        .engine-box { border: 1px solid #00ff41; padding: 25px; border-radius: 12px; width: 550px; background: #000; box-shadow: 0 0 25px rgba(0,255,65,0.15); text-align: center; }
         .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 20px; padding-bottom: 10px; color: #008f11; display: flex; justify-content: space-between; }
         #resultImg { width: 100%; margin-top: 20px; border: 1px solid #00ff41; border-radius: 8px; display: none; }
-        .terminal-log { font-size: 13px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; margin-top: 15px; border: 1px solid #111; }
-        .controls { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; width: 100%; }
-        input[type="file"] { color: #00ff41; background: #0a0a0a; padding: 10px; border: 1px dashed #333; border-radius: 5px; cursor: pointer; }
-        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 12px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .delete-btn:hover { background: #ff0000; }
+        .terminal-log { font-size: 12px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; margin-top: 15px; border: 1px solid #111; overflow-x: auto; }
+        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 12px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="engine-box">
         <div class="status-bar">
-            <span>CORE: ACTIVE</span>
+            <span>CORE: NUMERICAL_ONLY</span>
             <span>T: <span id="t-val">0</span></span>
-            <span>MODE: STEALTH</span>
+            <span>STATUS: <span id="sync-status">READY</span></span>
         </div>
         
-        <h2 style="margin:0 0 20px 0;">TWIN SYNC v6.0</h2>
+        <input type="file" id="filePicker" style="color:#00ff41; margin-bottom:15px;">
+        <button id="globalDelete" class="delete-btn">RESET NUMERICAL STATE</button>
         
-        <div class="controls">
-            <input type="file" id="filePicker">
-            <button id="globalDelete" class="delete-btn">حذف المسار (RESET_SYNC)</button>
-        </div>
-        
-        <div class="terminal-log" id="log">AWAITING_COORDINATES...</div>
+        <div class="terminal-log" id="log">AWAITING_NUMERICAL_VECTORS...</div>
         <img id="resultImg">
     </div>
 
@@ -53,29 +46,48 @@
         const db = getDatabase(app);
         const PATHS = { counter: "temporal/counter", stream: "temporal/stream" };
 
+        const TYPE_MAP = { "image/png": 1, "image/jpeg": 2, "image/webp": 3, "image/gif": 4 };
+        const REV_MAP = { 1: "image/png", 2: "image/jpeg", 3: "image/webp", 4: "image/gif" };
+
         let localT = 0;
 
-        class TwinEngine {
-            // التفكيك: إرسال رموز مبهمة V و C
+        class NumericalEngine {
+            // التفكيك إلى أرقام فقط
             static async decompose(file, T) {
                 const buffer = await file.arrayBuffer();
                 const uint8 = new Uint8Array(buffer);
+                
+                // تحويل البايتات إلى مصفوفة أرقام عادية ليفهمها السيرفر كأرقام
+                const numericalVector = Array.from(uint8);
                 const Qlen = uint8.length;
+                
                 const start = (T * 31 + Qlen * 7) % Qlen;
                 const end = (T * 17 + Qlen * 13) % Qlen;
                 const mid = Math.floor((start + end) / 2);
-                const rawV = btoa(String.fromCharCode.apply(null, uint8));
-                
-                // V = المادة، C = النوع
-                return { Qlen, T, Start: start, Mid: mid, And: end, V: rawV, C: file.type };
+
+                // إرسال أرقام فقط: V (بايتات)، C (كود النوع)
+                return { 
+                    A: end, 
+                    M: mid, 
+                    S: start, 
+                    L: Qlen, 
+                    T: T, 
+                    V: numericalVector, 
+                    C: TYPE_MAP[file.type] || 0 
+                };
             }
 
-            // إعادة التوليد من الرموز المبهمة
+            // التركيب من الأرقام
             static reconstruct(m) {
+                const uint8 = new Uint8Array(m.V);
+                const blob = new Blob([uint8], { type: REV_MAP[m.C] || "image/png" });
+                const url = URL.createObjectURL(blob);
+                
                 const img = document.getElementById("resultImg");
-                img.src = `data:${m.C};base64,${m.V}`;
+                img.src = url;
                 img.style.display = "block";
-                document.getElementById("log").innerHTML = `Qlen:${m.Qlen} | S:${m.Start} | E:${m.And} | T:${m.T}`;
+                
+                document.getElementById("log").innerHTML = `VECTOR_RECEIVED: L:${m.L} | T:${m.T} | C:${m.C}`;
             }
         }
 
@@ -83,13 +95,14 @@
             const sT = snap.val();
             if (sT && sT > localT) {
                 const stateSnap = await get(ref(db, `${PATHS.stream}/state_${sT}`));
-                const markers = stateSnap.val();
-                if (markers) {
-                    TwinEngine.reconstruct(markers);
+                const data = stateSnap.val();
+                if (data) {
+                    NumericalEngine.reconstruct(data);
                     localT = sT;
                     document.getElementById("t-val").innerText = sT;
+                    document.getElementById("sync-status").innerText = "SYNCED";
                 }
-            } else if (sT === 0 || !sT) {
+            } else if (!sT) {
                 clearUI();
             }
         });
@@ -97,28 +110,30 @@
         document.getElementById('filePicker').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            document.getElementById("sync-status").innerText = "PROCESSING...";
+            
             const counterSnap = await get(ref(db, PATHS.counter));
             const nextT = (counterSnap.val() || 0) + 1;
-            const state = await TwinEngine.decompose(file, nextT);
+            
+            const state = await NumericalEngine.decompose(file, nextT);
             await set(ref(db, `${PATHS.stream}/state_${nextT}`), state);
             await set(ref(db, PATHS.counter), nextT);
             localT = nextT;
         };
 
         document.getElementById('globalDelete').onclick = async () => {
-            if(confirm("حذف كلي؟")) {
-                await set(ref(db, PATHS.counter), 0);
-                await remove(ref(db, PATHS.stream));
-                clearUI();
-            }
+            await set(ref(db, PATHS.counter), 0);
+            await remove(ref(db, PATHS.stream));
+            clearUI();
         };
 
         function clearUI() {
             document.getElementById("resultImg").style.display = "none";
             document.getElementById("resultImg").src = "";
             document.getElementById("t-val").innerText = "0";
-            localT = 0;
+            document.getElementById("sync-status").innerText = "IDLE";
             document.getElementById("log").innerText = "STREAM_VACUUMED.";
+            localT = 0;
         }
     </script>
 </body>
