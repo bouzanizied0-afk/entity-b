@@ -2,124 +2,111 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Twin Engine - Stealth Mode</title>
+    <title>نظام التزامن التلقائي الفوري</title>
     <style>
-        body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .engine-box { border: 1px solid #00ff41; padding: 25px; border-radius: 12px; width: 520px; background: #000; box-shadow: 0 0 25px rgba(0,255,65,0.15); text-align: center; }
-        .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 20px; padding-bottom: 10px; color: #008f11; display: flex; justify-content: space-between; }
-        #resultImg { width: 100%; margin-top: 20px; border: 1px solid #00ff41; border-radius: 8px; display: none; }
-        .terminal-log { font-size: 13px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; margin-top: 15px; border: 1px solid #111; }
-        .controls { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; width: 100%; }
-        input[type="file"] { color: #00ff41; background: #0a0a0a; padding: 10px; border: 1px dashed #333; border-radius: 5px; cursor: pointer; }
-        .delete-btn { background: #ff4b2b; color: white; border: none; padding: 12px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .delete-btn:hover { background: #ff0000; }
+        body { font-family: sans-serif; background: #0a0a0a; color: #00d4ff; display: flex; flex-direction: column; align-items: center; padding: 30px; }
+        .container { background: #111; padding: 25px; border-radius: 15px; border: 1px solid #00d4ff; width: 450px; text-align: center; box-shadow: 0 0 25px rgba(0,212,255,0.2); }
+        .server-status { background: #000; padding: 5px; border-radius: 5px; font-family: monospace; font-size: 12px; margin-bottom: 20px; color: #555; }
+        input[type="file"] { margin: 20px 0; color: #00d4ff; }
+        #resultImg { display: none; margin-top: 20px; max-width: 100%; border: 2px solid #00d4ff; border-radius: 10px; animation: fadeIn 0.5s; }
+        .status { margin-top: 15px; font-size: 0.9em; color: #888; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        .loader { display: none; margin: 10px auto; border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="engine-box">
-        <div class="status-bar">
-            <span>CORE: ACTIVE</span>
-            <span>T: <span id="t-val">0</span></span>
-            <span>MODE: STEALTH</span>
-        </div>
+    <div class="container">
+        <div class="server-status">قناة المزامنة: <span id="serverTimer">0</span></div>
+        <h2>تزامن تلقائي (بث حي)</h2>
         
-        <h2 style="margin:0 0 20px 0;">TWIN SYNC v6.0</h2>
+        <input type="file" id="fileInput" accept="image/*">
         
-        <div class="controls">
-            <input type="file" id="filePicker">
-            <button id="globalDelete" class="delete-btn">حذف المسار (RESET_SYNC)</button>
-        </div>
+        <div class="loader" id="loader"></div>
+        <div id="statusText" class="status">في انتظار بيانات...</div>
         
-        <div class="terminal-log" id="log">AWAITING_COORDINATES...</div>
-        <img id="resultImg">
+        <img id="resultImg" alt="الصورة المستلمة">
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
-          apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
-          authDomain: "zied-e3b78.firebaseapp.com",
-          databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
-          projectId: "zied-e3b78",
-          storageBucket: "zied-e3b78.firebasestorage.app",
-          messagingSenderId: "774724725374",
-          appId: "1:774724725374:web:a338e16e8689d60dd3062f"
+            apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
+            authDomain: "zied-e3b78.firebaseapp.com",
+            databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "zied-e3b78",
+            storageBucket: "zied-e3b78.firebasestorage.app",
+            messagingSenderId: "774724725374",
+            appId: "1:774724725374:web:a338e16e8689d60dd3062f",
+            measurementId: "G-20CPRZJ5JE"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const PATHS = { counter: "temporal/counter", stream: "temporal/stream" };
 
         let localT = 0;
 
-        class TwinEngine {
-            // التفكيك: إرسال رموز مبهمة V و C
-            static async decompose(file, T) {
-                const buffer = await file.arrayBuffer();
-                const uint8 = new Uint8Array(buffer);
-                const Qlen = uint8.length;
-                const start = (T * 31 + Qlen * 7) % Qlen;
-                const end = (T * 17 + Qlen * 13) % Qlen;
-                const mid = Math.floor((start + end) / 2);
-                const rawV = btoa(String.fromCharCode.apply(null, uint8));
+        // 1. تحديث عداد الخادم للتحقق من الاتصال
+        onValue(ref(db, "system/heartbeat"), (s) => document.getElementById("serverTimer").innerText = s.val() || 0);
+
+        // 2. الاستماع والمزامنة التلقائية (الميزة المطلوبة)
+        onValue(ref(db, "temporal/counter"), async (snap) => {
+            const serverT = snap.val();
+            
+            // إذا كان العداد على الخادم أكبر من العداد المحلي، يعني هناك صورة جديدة
+            if (serverT && serverT > localT) {
+                localT = serverT; // تحديث العداد المحلي فوراً لمنع التكرار
                 
-                // V = المادة، C = النوع
-                return { Qlen, T, Start: start, Mid: mid, And: end, V: rawV, C: file.type };
-            }
+                document.getElementById("statusText").innerText = "جاري جلب الصورة تلقائياً...";
+                document.getElementById("loader").style.display = "block";
 
-            // إعادة التوليد من الرموز المبهمة
-            static reconstruct(m) {
-                const img = document.getElementById("resultImg");
-                img.src = `data:${m.C};base64,${m.V}`;
-                img.style.display = "block";
-                document.getElementById("log").innerHTML = `Qlen:${m.Qlen} | S:${m.Start} | E:${m.And} | T:${m.T}`;
-            }
-        }
+                const stateSnap = await get(ref(db, `temporal/stream/state_${serverT}`));
+                const incomingState = stateSnap.val();
 
-        onValue(ref(db, PATHS.counter), async (snap) => {
-            const sT = snap.val();
-            if (sT && sT > localT) {
-                const stateSnap = await get(ref(db, `${PATHS.stream}/state_${sT}`));
-                const markers = stateSnap.val();
-                if (markers) {
-                    TwinEngine.reconstruct(markers);
-                    localT = sT;
-                    document.getElementById("t-val").innerText = sT;
+                if (incomingState) {
+                    const imgElement = document.getElementById("resultImg");
+                    imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
+                    imgElement.style.display = "block";
+                    
+                    document.getElementById("loader").style.display = "none";
+                    document.getElementById("statusText").innerText = "تم استلام صورة جديدة وتحديثها.";
                 }
-            } else if (sT === 0 || !sT) {
-                clearUI();
             }
         });
 
-        document.getElementById('filePicker').onchange = async (e) => {
+        // 3. عملية الإرسال
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            const counterSnap = await get(ref(db, PATHS.counter));
-            const nextT = (counterSnap.val() || 0) + 1;
-            const state = await TwinEngine.decompose(file, nextT);
-            await set(ref(db, `${PATHS.stream}/state_${nextT}`), state);
-            await set(ref(db, PATHS.counter), nextT);
-            localT = nextT;
-        };
 
-        document.getElementById('globalDelete').onclick = async () => {
-            if(confirm("حذف كلي؟")) {
-                await set(ref(db, PATHS.counter), 0);
-                await remove(ref(db, PATHS.stream));
-                clearUI();
-            }
-        };
+            document.getElementById("statusText").innerText = "جاري معالجة الصورة وإرسالها...";
+            document.getElementById("loader").style.display = "block";
 
-        function clearUI() {
-            document.getElementById("resultImg").style.display = "none";
-            document.getElementById("resultImg").src = "";
-            document.getElementById("t-val").innerText = "0";
-            localT = 0;
-            document.getElementById("log").innerText = "STREAM_VACUUMED.";
-        }
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64Data = btoa(String.fromCharCode.apply(null, new Uint8Array(event.target.result)));
+
+                const counterSnap = await get(ref(db, "temporal/counter"));
+                const nextT = (counterSnap.val() || 0) + 1;
+
+                const payload = {
+                    data: base64Data,
+                    T: nextT,
+                    type: file.type
+                };
+
+                await set(ref(db, `temporal/stream/state_${nextT}`), payload);
+                await set(ref(db, "temporal/counter"), nextT);
+                
+                localT = nextT; // المزامنة محلياً لعدم استقبال ما أرسلته أنا
+                document.getElementById("loader").style.display = "none";
+                document.getElementById("statusText").innerText = "تم الإرسال بنجاح.";
+            };
+            reader.readAsArrayBuffer(file);
+        });
     </script>
 </body>
 </html>
