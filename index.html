@@ -13,6 +13,7 @@
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
         .loader { display: none; margin: 10px auto; border: 3px solid #333; border-top: 3px solid #00d4ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #deleteBtn { background: #ff4444; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
@@ -27,11 +28,12 @@
         <div id="statusText" class="status">في انتظار بيانات...</div>
         
         <img id="resultImg" alt="الصورة المستلمة">
+        <button id="deleteBtn">حذف الصورة</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
@@ -56,9 +58,8 @@
         onValue(ref(db, "temporal/counter"), async (snap) => {
             const serverT = snap.val();
             
-            // إذا كان العداد على الخادم أكبر من العداد المحلي، يعني هناك صورة جديدة
             if (serverT && serverT > localT) {
-                localT = serverT; // تحديث العداد المحلي فوراً لمنع التكرار
+                localT = serverT; 
                 
                 document.getElementById("statusText").innerText = "جاري جلب الصورة تلقائياً...";
                 document.getElementById("loader").style.display = "block";
@@ -70,10 +71,16 @@
                     const imgElement = document.getElementById("resultImg");
                     imgElement.src = `data:${incomingState.type};base64,${incomingState.data}`;
                     imgElement.style.display = "block";
+                    document.getElementById("deleteBtn").style.display = "inline-block";
                     
                     document.getElementById("loader").style.display = "none";
                     document.getElementById("statusText").innerText = "تم استلام صورة جديدة وتحديثها.";
                 }
+            } else if (!serverT) {
+                document.getElementById("resultImg").style.display = "none";
+                document.getElementById("deleteBtn").style.display = "none";
+                document.getElementById("statusText").innerText = "تم حذف الصورة من الخادم.";
+                localT = 0;
             }
         });
 
@@ -101,11 +108,17 @@
                 await set(ref(db, `temporal/stream/state_${nextT}`), payload);
                 await set(ref(db, "temporal/counter"), nextT);
                 
-                localT = nextT; // المزامنة محلياً لعدم استقبال ما أرسلته أنا
+                localT = nextT; 
                 document.getElementById("loader").style.display = "none";
                 document.getElementById("statusText").innerText = "تم الإرسال بنجاح.";
             };
             reader.readAsArrayBuffer(file);
+        });
+
+        // 4. عملية الحذف
+        document.getElementById('deleteBtn').addEventListener('click', async () => {
+            await remove(ref(db, "temporal/stream"));
+            await set(ref(db, "temporal/counter"), 0);
         });
     </script>
 </body>
