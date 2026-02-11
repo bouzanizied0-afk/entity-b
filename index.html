@@ -2,35 +2,33 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>نظام التوائم الحتمي - إحداثيات صرفة</title>
+    <title>المحرك الحتمي - التزامن الرقمي الصرف</title>
     <style>
-        body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .engine-box { border: 1px solid #00ff41; padding: 20px; border-radius: 10px; width: 500px; background: #000; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
-        .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 20px; padding-bottom: 10px; color: #008f11; display: flex; justify-content: space-between; }
-        #resultImg { width: 100%; margin-top: 20px; border: 1px solid #00ff41; display: none; }
-        .terminal-log { font-size: 13px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; }
-        input[type="file"] { margin: 20px 0; font-family: inherit; color: #00ff41; }
+        body { font-family: monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .engine-box { border: 1px solid #00ff41; padding: 20px; border-radius: 10px; width: 500px; background: #000; box-shadow: 0 0 15px #00ff4133; }
+        .status-bar { font-size: 12px; border-bottom: 1px solid #222; margin-bottom: 15px; padding-bottom: 10px; color: #888; }
+        #canvas-display { width: 100%; margin-top: 15px; border: 1px solid #333; display: none; }
+        .marker-view { font-size: 14px; color: #00ff41; background: #0a0a0a; padding: 15px; margin-top: 10px; border-radius: 5px; line-height: 1.6; }
     </style>
 </head>
 <body>
 
     <div class="engine-box">
-        <div class="status-bar">
-            <span>CORE: ACTIVE</span>
-            <span>T: <span id="t-val">0</span></span>
-            <span>SYNC: <span id="sync-status">IDLE</span></span>
+        <div class="status-bar">STATUS: <span id="sync-status">READY</span> | T: <span id="t-val">0</span></div>
+        <h3 style="margin:0">Deterministic Engine v3.0 (Pure Coordinates)</h3>
+        
+        <input type="file" id="source-input" style="margin-top:20px; color:#00ff41;">
+        
+        <div id="output-zone">
+            <div class="marker-view" id="marker-data">
+                Qlen: 0<br>
+                T: 0<br>
+                End: 0<br>
+                Mid: 0<br>
+                Start: 0
+            </div>
+            <img id="canvas-display">
         </div>
-        
-        <h2 style="text-align:center; margin:0 0 20px 0;">TWIN SYNC v4.0</h2>
-        
-        <input type="file" id="filePicker" accept="image/*">
-        
-        <div class="terminal-log" id="log">
-            SYSTEM READY...<br>
-            AWAITING COORDINATES...
-        </div>
-
-        <img id="resultImg">
     </div>
 
     <script type="module">
@@ -53,43 +51,39 @@
 
         let localT = 0;
 
-        // --- محرك التوائم الحتمي ---
-        class TwinEngine {
-            // الطرف المرسل: يحول الصورة إلى أرقام فقط
+        // --- المحرك المحلي الصارم (Pure Local Engine) ---
+        class DeterministicEngine {
+            // التفكيك: تحويل الصورة إلى إحداثيات فقط
             static async decompose(file, T) {
                 const buffer = await file.arrayBuffer();
                 const uint8 = new Uint8Array(buffer);
                 const Qlen = uint8.length;
                 
-                // معادلة الحالة E (توليد المؤشرات من المحتوى)
-                const start = (T * 31 + Qlen * 7) % Qlen;
-                const end = (T * 17 + Qlen * 13) % Qlen;
+                // حساب المؤشرات بناءً على محتوى البايتات (لضمان الارتباط بالمحتوى)
+                const sum = uint8.reduce((a, b) => a + b, 0);
+                const start = (T * 31 + sum) % Qlen;
+                const end = (T * 17 + Qlen) % Qlen;
                 const mid = Math.floor((start + end) / 2);
 
-                // إرسال الأرقام + المحتوى مشفر (لأن التوأم يحتاج البيانات لإعادة البناء)
-                // ملاحظة: البيانات مشفرة Base64 لتظهر كـ String غير مفهوم في الخادم
-                const rawData = btoa(String.fromCharCode.apply(null, uint8));
-
-                return { Qlen, T, Start: start, Mid: mid, And: end, data: rawData, type: file.type };
+                // ملاحظة: لا نرسل uint8 ولا نرسل Base64، نرسل فقط الخريطة الرقمية
+                // ولأغراض العرض التعليمي في هذا الكود، سنخزن "بذرة" (Seed) فقط
+                return { Qlen, T, end, mid, start };
             }
 
-            // الطرف المستلم: يعيد بناء المادة من المؤشرات
+            // إعادة التوليد الافتراضي (هذا الجزء يحتاج للمادة الخام محلياً ليعمل)
             static reconstruct(markers) {
-                const img = document.getElementById("resultImg");
-                img.src = `data:${markers.type};base64,${markers.data}`;
-                img.style.display = "block";
-                
-                document.getElementById("log").innerHTML = `
+                // عرض الأرقام في الواجهة كما تظهر في الخادم
+                document.getElementById("marker-data").innerHTML = `
                     Qlen: ${markers.Qlen}<br>
-                    Start: ${markers.Start}<br>
-                    Mid: ${markers.Mid}<br>
-                    And: ${markers.And}<br>
-                    T: ${markers.T}
+                    T: ${markers.T}<br>
+                    End: ${markers.end}<br>
+                    Mid: ${markers.mid}<br>
+                    Start: ${markers.start}
                 `;
             }
         }
 
-        // --- التزامن اللحظي ---
+        // --- مراقبة الخادم ---
         onValue(ref(db, PATHS.counter), async (snap) => {
             const serverT = snap.val();
             if (serverT && serverT > localT) {
@@ -97,27 +91,27 @@
                 const markers = stateSnap.val();
                 
                 if (markers) {
-                    TwinEngine.reconstruct(markers);
+                    DeterministicEngine.reconstruct(markers);
                     localT = serverT;
                     document.getElementById("t-val").innerText = serverT;
-                    document.getElementById("sync-status").innerText = "LOCKED";
+                    document.getElementById("sync-status").innerText = "COORDINATES RECEIVED";
                 }
             }
         });
 
-        // --- الإرسال من الطرف الأول ---
-        document.getElementById('filePicker').onchange = async (e) => {
+        // --- الإرسال الرقمي الصرف ---
+        document.getElementById('source-input').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            document.getElementById("sync-status").innerText = "SENDING...";
             const counterSnap = await get(ref(db, PATHS.counter));
             const nextT = (counterSnap.val() || 0) + 1;
 
-            const state = await TwinEngine.decompose(file, nextT);
+            // توليد الأرقام فقط
+            const pureMarkers = await DeterministicEngine.decompose(file, nextT);
             
-            // رفع البيانات بالهيكلية المطلوبة للخادم
-            await set(ref(db, `${PATHS.stream}/state_${nextT}`), state);
+            // إرسال الأرقام فقط للخادم (الآن الخادم أعمى)
+            await set(ref(db, `${PATHS.stream}/state_${nextT}`), pureMarkers);
             await set(ref(db, PATHS.counter), nextT);
             
             localT = nextT;
