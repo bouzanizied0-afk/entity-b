@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>تجربة إرسال الصور مع الخادم</title>
+<style>
+body { margin:0; font-family:sans-serif; background:#0a0a0a; color:#eee; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+.container { background:#111; padding:20px; border-radius:10px; border:1px solid #00d4ff; width:300px; text-align:center; }
+#file { margin-top:15px; }
+img { margin-top:15px; max-width:100%; border:2px solid #00d4ff; border-radius:5px; }
+.status { margin-top:10px; font-size:0.9em; color:#888; }
+#heartbeat { margin-top:5px; font-size:0.8em; color:#555; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h3>تجربة إرسال الصور</h3>
+  <div id="heartbeat">عداد الخادم: 0</div>
+  <input type="file" id="file" accept="image/*">
+  <div class="status" id="status">في انتظار رفع صورة...</div>
+  <img id="resultImg" alt="الصورة المستلمة">
+</div>
+
+<script type="module">
+import { db, PATHS, startHeartbeat } from "./serverCore.js";
+import { sendImage, onImageReceived, fingerprintImage, transmitFingerprint, listenAndReconstruct } from "./imageSync.js";
+import { ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+// بدء عداد الخادم
+startHeartbeat();
+
+// ربط واجهة HTML
+const fileInput = document.getElementById("file");
+const status = document.getElementById("status");
+const resultImg = document.getElementById("resultImg");
+const heartbeatDiv = document.getElementById("heartbeat");
+
+// تحديث عداد الخادم بشكل مباشر
+onValue(ref(db, PATHS.heartbeat), (snap) => {
+    heartbeatDiv.innerText = "عداد الخادم: " + (snap.val() || 0);
+});
+
+// استقبال وبناء الصورة تدريجيًا (البصمة)
+listenAndReconstruct(db, (data) => {
+    status.innerText = "تقدم الصورة: " + data.length + " جزء";
+});
+
+// رفع الصور
+fileInput.addEventListener("change", async () => {
+    const f = fileInput.files[0];
+    if (!f) return;
+
+    status.innerText = "جاري معالجة الصورة...";
+
+    // 1️⃣ التفكيك المحلي + الإرسال الجزئي الفوري
+    const fp = await fingerprintImage(f);
+    transmitFingerprint(db, fp);
+
+    // 2️⃣ الإرسال الكامل في الخلفية
+    sendImage(f);
+
+    fileInput.value = "";
+    status.innerText = "تم الإرسال.";
+});
+
+// استقبال الصور كاملة وعرضها فورًا
+onImageReceived((dataURL) => {
+    resultImg.src = dataURL;
+    status.innerText = "تم استقبال صورة جديدة!";
+});
+</script>
+
+</body>
+</html>
