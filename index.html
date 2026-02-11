@@ -2,30 +2,39 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Twin Factory v9.0 - State Assembly</title>
+    <title>Twin Assembly Plant v10.0</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .engine-box { border: 1px solid #00ff41; padding: 25px; border-radius: 12px; width: 500px; background: #000; box-shadow: 0 0 30px rgba(0,255,65,0.2); text-align: center; }
-        canvas { margin-top: 20px; border: 1px solid #00ff41; background: #000; width: 100%; height: auto; image-rendering: pixelated; }
-        .terminal-log { font-size: 13px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; margin-top: 15px; border: 1px solid #111; }
-        .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 15px; padding-bottom: 5px; display: flex; justify-content: space-between; }
+        .factory-floor { border: 2px solid #00ff41; padding: 20px; width: 600px; background: #000; box-shadow: 0 0 40px rgba(0,255,65,0.2); }
+        .assembly-grid { 
+            display: grid; 
+            grid-template-columns: repeat(10, 1fr); 
+            gap: 2px; 
+            margin-top: 20px; 
+            background: #111; 
+            border: 1px solid #333;
+            min-height: 300px;
+        }
+        .part { width: 100%; padding-top: 100%; background: #002200; border: 1px solid #004400; transition: 0.3s; }
+        .part.active { background: #00ff41; box-shadow: 0 0 10px #00ff41; }
+        .status-panel { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 10px; border-bottom: 1px solid #00ff41; padding-bottom: 5px; }
+        .log { font-size: 11px; height: 80px; overflow-y: auto; background: #080808; padding: 10px; margin-top: 10px; border: 1px solid #222; }
     </style>
 </head>
 <body>
 
-    <div class="engine-box">
-        <div class="status-bar">
-            <span>ASSEMBLY_LINE: ACTIVE</span>
-            <span>T: <span id="t-val">0</span></span>
+    <div class="factory-floor">
+        <div class="status-panel">
+            <span>PLANT_STATUS: RUNNING</span>
+            <span>PARTS_SYNCED: <span id="sync-count">0</span>/100</span>
         </div>
-        
-        <input type="file" id="filePicker" style="color: #00ff41;">
-        
-        <canvas id="assemblyCanvas"></canvas>
 
-        <div class="terminal-log" id="log">
-            READY_FOR_BLUEPRINT...
-        </div>
+        <input type="file" id="workerInput" style="color:#00ff41;">
+        
+        <div class="assembly-grid" id="grid">
+            </div>
+
+        <div class="log" id="terminal">AWAITING_SHIPMENT_DETAILS...</div>
     </div>
 
     <script type="module">
@@ -44,74 +53,61 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const PATHS = { counter: "temporal/counter", stream: "temporal/stream" };
+
+        // إنشاء شبكة المصنع (100 قطعة للتركيب)
+        const grid = document.getElementById('grid');
+        for(let i=0; i<100; i++) {
+            const div = document.createElement('div');
+            div.className = 'part';
+            div.id = `part-${i}`;
+            grid.appendChild(div);
+        }
 
         let localT = 0;
 
-        class TwinFactory {
-            // تفكيك السيارة إلى "معلومات شحن"
-            static async decompose(file, T) {
-                const buffer = await file.arrayBuffer();
-                const Qlen = buffer.byteLength;
-                
-                // حسابات حتمية صرفة (الإحداثيات)
-                const s = (T * 31 + Qlen * 7) % 255; // استخدام الـ 255 لترميز لوني
-                const e = (T * 17 + Qlen * 13) % 255;
-                const m = Math.floor((s + e) / 2);
-
-                return { L: Qlen, T: T, S: s, M: m, A: e };
-            }
-
-            // إعادة تركيب "السيارة" فورياً عند الطرف الآخر بناءً على المعلومات فقط
-            static assemble(data) {
-                const canvas = document.getElementById("assemblyCanvas");
-                const ctx = canvas.getContext("2d");
-                canvas.width = 100;
-                canvas.height = 100;
-
-                // بناء كتل لونية (السيارة) بناءً على الإحداثيات المرسلة فقط
-                // هنا التوأم "يصنع" صورة متطابقة رياضياً دون أن يرى الأصل
-                ctx.fillStyle = `rgb(${data.S}, ${data.M}, ${data.A})`;
-                ctx.fillRect(0, 0, 100, 100);
-                
-                // إضافة نمط حتمي بناءً على الطول L
-                ctx.strokeStyle = "#00ff41";
-                ctx.strokeRect(data.S % 50, data.M % 50, 40, 40);
-
-                document.getElementById("log").innerHTML = `
-                    BLUEPRINT_RECEIVED:<br>
-                    - Material_Density: ${data.L}<br>
-                    - Color_Vector: ${data.S},${data.M},${data.A}<br>
-                    - Assembly_Status: SUCCESSFUL
-                `;
-            }
-        }
-
-        onValue(ref(db, PATHS.counter), async (snap) => {
-            const sT = snap.val();
-            if (sT && sT > localT) {
-                const sSnap = await get(ref(db, `${PATHS.stream}/state_${sT}`));
-                const blueprint = sSnap.val();
-                if (blueprint) {
-                    TwinFactory.assemble(blueprint);
-                    localT = sT;
-                    document.getElementById("t-val").innerText = sT;
-                }
+        // --- وظيفة التوأم المستلم: التركيب المحلي بدون نات ---
+        onValue(ref(db, "temporal/stream"), (snap) => {
+            const parts = snap.val();
+            if (parts) {
+                let count = 0;
+                Object.keys(parts).forEach(key => {
+                    const data = parts[key];
+                    // التركيب محلياً: تفعيل الجزء المطابق للرقم المستلم
+                    const element = document.getElementById(`part-${data.id}`);
+                    if (element && !element.classList.contains('active')) {
+                        element.classList.add('active');
+                        count++;
+                    }
+                });
+                document.getElementById('sync-count').innerText = Object.keys(parts).length;
+                document.getElementById('terminal').innerHTML += `PART_INSTALLED_LOCALLY: ID_${count}<br>`;
             }
         });
 
-        document.getElementById('filePicker').onchange = async (e) => {
+        // --- وظيفة المرسل: تفكيك وإرسال أرقام القطع فقط ---
+        document.getElementById('workerInput').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            const counterSnap = await get(ref(db, PATHS.counter));
-            const nextT = (counterSnap.val() || 0) + 1;
-
-            const blueprint = await TwinFactory.decompose(file, nextT);
+            // تنظيف المصنع للبدء من جديد
+            document.querySelectorAll('.part').forEach(p => p.classList.remove('active'));
             
-            await set(ref(db, `${PATHS.stream}/state_${nextT}`), blueprint);
-            await set(ref(db, PATHS.counter), nextT);
-            localT = nextT;
+            // محاكاة تفكيك الملف إلى 100 قطعة معلوماتية
+            for (let i = 0; i < 100; i++) {
+                // نرسل فقط رقم القطعة (ID) وإحداثية حتمية بسيطة
+                const partData = {
+                    id: i,
+                    ts: Date.now(),
+                    h: (file.size * i) % 360 // لون حتمي للقطعة
+                };
+
+                // إرسال "أمر التركيب" للسيرفر
+                await set(ref(db, `temporal/stream/p_${i}`), partData);
+                
+                // تأخير بسيط لمحاكاة "العمال" وهم يرسلون القطع واحدة تلو الأخرى
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await set(ref(db, "temporal/counter"), Date.now());
         };
     </script>
 </body>
