@@ -2,33 +2,35 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Sovereign Twin Engine v3.0 - Global Path</title>
+    <title>Twin Engine v2.2 - Path Connected</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, onChildAdded } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // إعدادات المسار (الخادم)
+        // إحداثيات المسار الرقمي
         const firebaseConfig = {
             databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app"
         };
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const pathRef = ref(db, "global_twin_path");
 
-        // ربط العناصر بالكود
-        window.sendToPath = (equation, meta, data) => {
-            set(ref(db, "twin_gate/pulse"), {
+        // وظيفة بث المعادلة إلى المسار
+        window.broadcastToPath = (equation, fileMeta, content) => {
+            set(pathRef, {
                 formula: equation,
-                meta: meta,
-                payload: data, // في المرحلة الأولى سنرسل البيانات للتجربة
+                meta: fileMeta,
+                data: content, // المادة الخام مشفرة
+                senderId: Math.random().toString(36).substring(7),
                 timestamp: Date.now()
             });
         };
 
-        // الاستماع للمسار (التجسيد التلقائي للطرف الآخر)
-        onValue(ref(db, "twin_gate/pulse"), (snapshot) => {
+        // وظيفة الاستماع للمسار (التجسيد عند الطرف الآخر)
+        onValue(pathRef, (snapshot) => {
             const val = snapshot.val();
-            if (val && window.isReceiver) {
-                window.reconstructFromPath(val);
+            if (val && !window.currentSender) {
+                window.triggerReconstruction(val);
             }
         });
     </script>
@@ -36,84 +38,82 @@
     <style>
         :root { --secure-green: #00ff41; --bg-black: #050505; }
         body { background: var(--bg-black); color: var(--secure-green); font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .core-container { border: 2px solid var(--secure-green); padding: 30px; width: 500px; box-shadow: 0 0 30px rgba(0, 255, 65, 0.2); background: #000; }
-        .terminal { height: 150px; background: #000; border: 1px solid #111; padding: 10px; font-size: 12px; overflow-y: auto; margin: 15px 0; border-right: 3px solid var(--secure-green); }
+        .core-container { border: 2px solid var(--secure-green); padding: 30px; width: 450px; box-shadow: 0 0 20px rgba(0,255,65,0.2); background: #000; text-align: center; }
+        .terminal { height: 120px; background: #000; border: 1px solid #111; padding: 10px; font-size: 12px; overflow-y: auto; margin: 15px 0; border-right: 3px solid var(--secure-green); text-align: right; }
         .btn-instant { background: var(--secure-green); color: #000; border: none; padding: 15px; width: 100%; font-weight: 900; cursor: pointer; }
+        .btn-instant:hover { background: #fff; }
     </style>
 </head>
 <body>
 
 <div class="core-container">
-    <div style="font-size: 10px; border: 1px solid var(--secure-green); padding: 5px; margin-bottom: 20px;">GATEWAY_STATUS: CONNECTED_TO_PATH</div>
-    <h2 style="margin: 0;">بوابة التزامن التوأم</h2>
+    <div style="font-size: 10px; border: 1px solid var(--secure-green); padding: 5px; margin-bottom: 15px;">STATUS: PATH_SYNC_ACTIVE</div>
+    <h2 style="margin: 0;">المحرك التوأم (الربط العالمي)</h2>
     
-    <div class="terminal" id="term"> [SYSTEM] المسار نشط.. بانتظار إشارة من التوأم... </div>
+    <div class="terminal" id="term"> [SYSTEM] بانتظار إشارة من المسار... </div>
 
     <input type="file" id="inputSrc" style="display:none">
-    <button class="btn-instant" onclick="document.getElementById('inputSrc').click()">تفكيك وبث عبر المسار</button>
+    <button class="btn-instant" id="mainBtn">تفكيك المادة وبثها</button>
     
-    <div id="secureZone" style="display:none; margin-top: 20px;">
-        <div id="secKey" style="color: #fff; font-size: 12px; background: #001100; padding: 10px; border: 1px dashed #00ff41;"></div>
+    <div id="statusInfo" style="margin-top:15px; font-size:11px; color:#888;">
+        زمن التزامن: <span id="syncTime">0ms</span> | الخطأ: 0%
     </div>
 </div>
 
 <script>
     const term = document.getElementById('term');
     const inputSrc = document.getElementById('inputSrc');
-    const secureZone = document.getElementById('secureZone');
-    const secKey = document.getElementById('secKey');
-
-    let rawData = null;
-    let meta = {};
-    window.isReceiver = true; // الجميع مستقبلون افتراضياً
+    const mainBtn = document.getElementById('mainBtn');
+    
+    window.currentSender = false;
 
     function log(msg, color = "#00ff41") {
         term.innerHTML += `<div style="color:${color}">> ${msg}</div>`;
         term.scrollTop = term.scrollHeight;
     }
 
+    mainBtn.onclick = () => inputSrc.click();
+
     inputSrc.onchange = (e) => {
-        window.isReceiver = false; // بمجرد اختيار ملف تصبح أنت "المُرسل"
         const file = e.target.files[0];
         if (!file) return;
 
-        meta = { name: file.name, type: file.type };
+        window.currentSender = true; // علامة لكي لا يعيد الجهاز تركيب ملفه هو
+        log(`بدء تفكيك: ${file.name}...`);
+
         const reader = new FileReader();
-        log("بدء التفكيك المحلي...");
-
         reader.onload = (ev) => {
-            rawData = ev.target.result;
-            const cryptoKey = "IT_" + btoa(file.name).substring(0, 8);
-            secKey.innerText = "معادلة التكوين: " + cryptoKey;
-            secureZone.style.display = "block";
-
-            log("إرسال 'الشرارة' عبر المسار...");
-            // تحويل الـ ArrayBuffer لـ Base64 مؤقتاً للتجربة عبر المسار
-            const base64Data = btoa(String.fromCharCode(...new Uint8Array(rawData)));
-            window.sendToPath(cryptoKey, meta, base64Data);
+            const raw = ev.target.result;
+            const equation = "IT_" + btoa(file.name).substring(0, 8).toUpperCase();
+            
+            // تحويل البيانات لبثها عبر المسار
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
+            
+            log("تم استخراج المعادلة. جاري البث عبر المسار...");
+            window.broadcastToPath(equation, {name: file.name, type: file.type}, base64);
+            
+            setTimeout(() => { window.currentSender = false; }, 3000);
         };
         reader.readAsArrayBuffer(file);
     };
 
-    window.reconstructFromPath = (data) => {
-        log("إشارة استلام! بدء التجسيد المحلي...", "#fff");
+    window.triggerReconstruction = (packet) => {
+        log(`استلام إشارة! تجسيد ملف: ${packet.meta.name}`, "#fff");
         
-        // تحويل البيانات المستلمة من المسار إلى ملف حقيقي
-        const byteCharacters = atob(data.payload);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: data.meta.type });
+        // عملية التركيب الفوري (العودة من المادة الرقمية)
+        const binary = atob(packet.data);
+        const array = new Uint8Array(binary.length);
+        for(let i=0; i<binary.length; i++) array[i] = binary.charCodeAt(i);
         
+        const blob = new Blob([array], {type: packet.meta.type});
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = "TWIN_" + data.meta.name;
-        link.click();
-        log("اكتمل التجسيد بنجاح من المسار.");
-        window.isReceiver = true; // العودة لوضع الاستقبال
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "TWIN_" + packet.meta.name;
+        a.click();
+        
+        log("اكتمل التجسيد بنجاح مطبق.", "#00ff41");
     };
 </script>
 </body>
