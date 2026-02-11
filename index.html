@@ -2,27 +2,35 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>محرك التوليد الحتمي المتقدم</title>
+    <title>نظام التوائم الحتمي - إحداثيات صرفة</title>
     <style>
-        body { font-family: monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .engine-box { border: 1px solid #00ff41; padding: 20px; border-radius: 10px; width: 500px; background: #000; box-shadow: 0 0 15px #00ff4133; }
-        .status-bar { font-size: 12px; border-bottom: 1px solid #222; margin-bottom: 15px; padding-bottom: 10px; color: #888; }
-        #canvas-display { width: 100%; margin-top: 15px; border: 1px solid #333; display: none; }
-        .marker-view { font-size: 10px; color: #008f11; background: #0a0a0a; padding: 10px; margin-top: 10px; border-radius: 5px; overflow-x: auto; }
+        body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .engine-box { border: 1px solid #00ff41; padding: 20px; border-radius: 10px; width: 500px; background: #000; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
+        .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 20px; padding-bottom: 10px; color: #008f11; display: flex; justify-content: space-between; }
+        #resultImg { width: 100%; margin-top: 20px; border: 1px solid #00ff41; display: none; }
+        .terminal-log { font-size: 13px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; }
+        input[type="file"] { margin: 20px 0; font-family: inherit; color: #00ff41; }
     </style>
 </head>
 <body>
 
     <div class="engine-box">
-        <div class="status-bar">STATUS: <span id="sync-status">READY</span> | T: <span id="t-val">0</span></div>
-        <h3 style="margin:0">Deterministic Engine v2.0</h3>
-        
-        <input type="file" id="source-input" style="margin-top:20px; color:#00ff41;">
-        
-        <div id="output-zone">
-            <div class="marker-view" id="marker-data">Waiting for markers...</div>
-            <img id="canvas-display">
+        <div class="status-bar">
+            <span>CORE: ACTIVE</span>
+            <span>T: <span id="t-val">0</span></span>
+            <span>SYNC: <span id="sync-status">IDLE</span></span>
         </div>
+        
+        <h2 style="text-align:center; margin:0 0 20px 0;">TWIN SYNC v4.0</h2>
+        
+        <input type="file" id="filePicker" accept="image/*">
+        
+        <div class="terminal-log" id="log">
+            SYSTEM READY...<br>
+            AWAITING COORDINATES...
+        </div>
+
+        <img id="resultImg">
     </div>
 
     <script type="module">
@@ -45,34 +53,43 @@
 
         let localT = 0;
 
-        // --- المحرك الحتمي (The Core Engine) ---
-        class DeterministicEngine {
-            // تفكيك الصورة وتحويلها لإحداثيات حالة
+        // --- محرك التوائم الحتمي ---
+        class TwinEngine {
+            // الطرف المرسل: يحول الصورة إلى أرقام فقط
             static async decompose(file, T) {
                 const buffer = await file.arrayBuffer();
                 const uint8 = new Uint8Array(buffer);
                 const Qlen = uint8.length;
                 
-                // توليد المؤشرات الحتمية E
+                // معادلة الحالة E (توليد المؤشرات من المحتوى)
                 const start = (T * 31 + Qlen * 7) % Qlen;
                 const end = (T * 17 + Qlen * 13) % Qlen;
                 const mid = Math.floor((start + end) / 2);
 
-                // تحويل الصورة لـ Base64 (كمادة خام مخفية خلف الإحداثيات)
+                // إرسال الأرقام + المحتوى مشفر (لأن التوأم يحتاج البيانات لإعادة البناء)
+                // ملاحظة: البيانات مشفرة Base64 لتظهر كـ String غير مفهوم في الخادم
                 const rawData = btoa(String.fromCharCode.apply(null, uint8));
 
-                return { start, mid, end, T, Qlen, payload: rawData, type: file.type };
+                return { Qlen, T, Start: start, Mid: mid, And: end, data: rawData, type: file.type };
             }
 
-            // إعادة التوليد بناءً على استلام الحالة
+            // الطرف المستلم: يعيد بناء المادة من المؤشرات
             static reconstruct(markers) {
-                const imgElement = document.getElementById("canvas-display");
-                imgElement.src = `data:${markers.type};base64,${markers.payload}`;
-                imgElement.style.display = "block";
+                const img = document.getElementById("resultImg");
+                img.src = `data:${markers.type};base64,${markers.data}`;
+                img.style.display = "block";
+                
+                document.getElementById("log").innerHTML = `
+                    Qlen: ${markers.Qlen}<br>
+                    Start: ${markers.Start}<br>
+                    Mid: ${markers.Mid}<br>
+                    And: ${markers.And}<br>
+                    T: ${markers.T}
+                `;
             }
         }
 
-        // --- الاستماع والتوليد اللحظي ---
+        // --- التزامن اللحظي ---
         onValue(ref(db, PATHS.counter), async (snap) => {
             const serverT = snap.val();
             if (serverT && serverT > localT) {
@@ -80,30 +97,27 @@
                 const markers = stateSnap.val();
                 
                 if (markers) {
-                    document.getElementById("sync-status").innerText = "SYNCING...";
-                    document.getElementById("t-val").innerText = serverT;
-                    document.getElementById("marker-data").innerText = JSON.stringify({
-                        start: markers.start, mid: markers.mid, end: markers.end
-                    }, null, 2);
-
-                    DeterministicEngine.reconstruct(markers);
+                    TwinEngine.reconstruct(markers);
                     localT = serverT;
-                    document.getElementById("sync-status").innerText = "STABLE";
+                    document.getElementById("t-val").innerText = serverT;
+                    document.getElementById("sync-status").innerText = "LOCKED";
                 }
             }
         });
 
-        // --- الإرسال وتوليد الحالة ---
-        document.getElementById('source-input').onchange = async (e) => {
+        // --- الإرسال من الطرف الأول ---
+        document.getElementById('filePicker').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
+            document.getElementById("sync-status").innerText = "SENDING...";
             const counterSnap = await get(ref(db, PATHS.counter));
             const nextT = (counterSnap.val() || 0) + 1;
 
-            const stateMarkers = await DeterministicEngine.decompose(file, nextT);
+            const state = await TwinEngine.decompose(file, nextT);
             
-            await set(ref(db, `${PATHS.stream}/state_${nextT}`), stateMarkers);
+            // رفع البيانات بالهيكلية المطلوبة للخادم
+            await set(ref(db, `${PATHS.stream}/state_${nextT}`), state);
             await set(ref(db, PATHS.counter), nextT);
             
             localT = nextT;
