@@ -2,38 +2,29 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Twin Factory v11.0 - Real Assembly</title>
+    <title>Twin DNA Engine v12.0</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .factory-floor { border: 2px solid #00ff41; padding: 20px; width: 500px; background: #000; box-shadow: 0 0 40px rgba(0,255,65,0.2); text-align: center; }
-        /* حاوية التجميع */
-        #assemblyArea { 
-            display: grid; 
-            grid-template-columns: repeat(10, 1fr); 
-            gap: 1px; 
-            margin-top: 20px; 
-            width: 400px; height: 400px;
-            margin-left: auto; margin-right: auto;
-            border: 1px solid #1a1a1a;
-        }
-        .chunk { width: 40px; height: 40px; background: #050505; border: 0.1px solid #111; background-size: 400px 400px; }
-        .status-panel { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 10px; border-bottom: 1px solid #00ff41; }
+        .factory-box { border: 2px solid #00ff41; padding: 20px; width: 450px; background: #000; text-align: center; box-shadow: 0 0 30px rgba(0,255,65,0.2); }
+        canvas { margin-top: 20px; border: 1px solid #333; max-width: 100%; image-rendering: pixelated; }
+        .stats { font-size: 12px; margin-top: 10px; color: #008f11; display: flex; justify-content: space-between; }
+        .log { font-size: 11px; background: #080808; padding: 10px; margin-top: 15px; border: 1px solid #111; height: 60px; overflow: hidden; text-align: left; }
     </style>
 </head>
 <body>
 
-    <div class="factory-floor">
-        <div class="status-panel">
-            <span>UNIT_ASSEMBLY: ACTIVE</span>
-            <span>PARTS: <span id="parts-count">0</span>/100</span>
+    <div class="factory-box">
+        <h3>TWIN_DNA_ASSEMBLER</h3>
+        <div class="stats">
+            <span>DNA_SEQUENCE: <span id="dna-progress">0</span>%</span>
+            <span>STATUS: <span id="status">IDLE</span></span>
         </div>
 
-        <input type="file" id="filePicker" accept="image/*" style="color:#00ff41;">
+        <input type="file" id="source" accept="image/*" style="color:#00ff41; font-size: 12px;">
         
-        <div id="assemblyArea">
-            </div>
+        <canvas id="renderTarget"></canvas>
 
-        <div id="log" style="font-size:12px; margin-top:15px; color:#008f11;">AWAITING_CHUNKS...</div>
+        <div class="log" id="terminal">READY_FOR_DECONSTRUCTION...</div>
     </div>
 
     <script type="module">
@@ -51,73 +42,51 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        const assemblyArea = document.getElementById('assemblyArea');
-        const chunksCount = 100; // سنقسم الصورة لـ 100 قطعة
+        const canvas = document.getElementById('renderTarget');
+        const ctx = canvas.getContext('2d');
 
-        // توليد مربعات التجميع مسبقاً
-        for(let i=0; i<chunksCount; i++) {
-            const div = document.createElement('div');
-            div.className = 'chunk';
-            div.id = `chunk-${i}`;
-            assemblyArea.appendChild(div);
-        }
-
-        // --- المستقبل (التوأم): يستلم القطعة ويضعها في مكانها فورا ---
+        // --- المستقبل (التوأم): يركب الصورة من "الأرقام" المستلمة ---
         onValue(ref(db, "temporal/stream"), (snap) => {
-            const data = snap.val();
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    const part = data[key];
-                    const slot = document.getElementById(`chunk-${part.id}`);
-                    if (slot && !slot.style.backgroundImage) {
-                        // وضع المادة (الصورة) في المربع المخصص لها
-                        slot.style.backgroundImage = `url(${part.img})`;
-                        // ضبط الإزاحة لتظهر الصورة بشكل صحيح (مثل البازل)
-                        const x = (part.id % 10) * 40;
-                        const y = Math.floor(part.id / 10) * 40;
-                        slot.style.backgroundPosition = `-${x}px -${y}px`;
-                        slot.style.border = "none";
-                    }
-                });
-                document.getElementById('parts-count').innerText = Object.keys(data).length;
+            const dna = snap.val();
+            if (dna && dna.raw) {
+                document.getElementById('status').innerText = "ASSEMBLING...";
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    document.getElementById('status').innerText = "COMPLETE";
+                };
+                // تحويل مصفوفة الأرقام المستلمة إلى مادة بصرية
+                img.src = dna.raw;
+                document.getElementById('dna-progress').innerText = "100";
             }
         });
 
-        // --- المرسل (المفكك): يقطع الصورة ويرسل كل قطعة على حدة ---
-        document.getElementById('filePicker').onchange = async (e) => {
+        // --- المرسل (المفكك): يحول الصورة إلى "بصمة جينية" رقمية ---
+        document.getElementById('source').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
-            await remove(ref(db, "temporal/stream")); // تنظيف البث القديم
-            
+            document.getElementById('status').innerText = "DECONSTRUCTING...";
             const reader = new FileReader();
+            
             reader.onload = async (event) => {
-                const img = new Image();
-                img.onload = async () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = 400; canvas.height = 400;
-                    ctx.drawImage(img, 0, 0, 400, 400);
-
-                    for (let i = 0; i < chunksCount; i++) {
-                        // قص قطعة صغيرة (40x40)
-                        const partCanvas = document.createElement('canvas');
-                        partCanvas.width = 40; partCanvas.height = 40;
-                        const px = (i % 10) * 40;
-                        const py = Math.floor(i / 10) * 40;
-                        partCanvas.getContext('2d').putImageData(ctx.getImageData(px, py, 40, 40), 0, 0);
-                        
-                        const partData = {
-                            id: i,
-                            img: partCanvas.toDataURL("image/webp", 0.5) // إرسال المادة مضغوطة جداً
-                        };
-
-                        // شحن القطعة للخادم
-                        set(ref(db, `temporal/stream/p_${i}`), partData);
-                        await new Promise(r => setTimeout(r, 100)); // سرعة "عمال" التركيب
-                    }
+                const dataURL = event.target.result;
+                
+                // هنا نقوم بـ "التفكيك": تحويل المادة إلى بصمة معلوماتية (Base64)
+                // في نظام التوأم، هذه البصمة هي "كتالوج التركيب"
+                const dnaPackage = {
+                    t: Date.now(),
+                    l: file.size,
+                    raw: dataURL // هذه هي مادة الليغو (الأرقام)
                 };
-                img.src = event.target.result;
+
+                // إرسال البصمة للخادم
+                await set(ref(db, "temporal/stream"), dnaPackage);
+                await set(ref(db, "temporal/counter"), Date.now());
+                
+                document.getElementById('terminal').innerText = `DNA_SENT: ${file.size} BYTES`;
             };
             reader.readAsDataURL(file);
         };
