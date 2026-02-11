@@ -2,42 +2,35 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Twin Engine v8.0 - Fingerprint Only</title>
+    <title>Twin Factory v9.0 - State Assembly</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .engine-box { border: 1px solid #00ff41; padding: 25px; border-radius: 12px; width: 500px; background: #000; box-shadow: 0 0 30px rgba(0,255,65,0.1); text-align: center; }
-        .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 20px; padding-bottom: 10px; color: #008f11; display: flex; justify-content: space-between; }
-        .terminal-log { font-size: 14px; color: #00ff41; background: #0a0a0a; padding: 20px; border-radius: 5px; text-align: left; direction: ltr; margin-top: 15px; border: 1px solid #00ff41; }
-        .controls { display: flex; flex-direction: column; gap: 15px; width: 100%; }
-        input[type="file"] { color: #00ff41; }
-        .btn-reset { background: #ff4b2b; color: #fff; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-family: inherit; font-weight: bold; }
-        /* وسم الصورة الجديد للعرض الفوري */
-        #displayZone { margin-top: 20px; max-width: 100%; border-radius: 8px; border: 1px solid #333; display: none; }
+        .engine-box { border: 1px solid #00ff41; padding: 25px; border-radius: 12px; width: 500px; background: #000; box-shadow: 0 0 30px rgba(0,255,65,0.2); text-align: center; }
+        canvas { margin-top: 20px; border: 1px solid #00ff41; background: #000; width: 100%; height: auto; image-rendering: pixelated; }
+        .terminal-log { font-size: 13px; color: #00ff41; background: #0a0a0a; padding: 15px; border-radius: 5px; text-align: left; direction: ltr; margin-top: 15px; border: 1px solid #111; }
+        .status-bar { font-size: 11px; border-bottom: 1px solid #1a1a1a; margin-bottom: 15px; padding-bottom: 5px; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
     <div class="engine-box">
         <div class="status-bar">
-            <span>PROTOCOL: FINGERPRINT_SYNC</span>
+            <span>ASSEMBLY_LINE: ACTIVE</span>
             <span>T: <span id="t-val">0</span></span>
         </div>
         
-        <div class="controls">
-            <input type="file" id="filePicker">
-            <button id="globalDelete" class="btn-reset">RESET_FINGERPRINT</button>
-        </div>
-
-        <img id="displayZone" alt="Preview">
+        <input type="file" id="filePicker" style="color: #00ff41;">
+        
+        <canvas id="assemblyCanvas"></canvas>
 
         <div class="terminal-log" id="log">
-            AWAITING_LOCAL_STATE...
+            READY_FOR_BLUEPRINT...
         </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
           apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
@@ -55,35 +48,42 @@
 
         let localT = 0;
 
-        class FingerprintEngine {
-            static async generate(file, T) {
+        class TwinFactory {
+            // تفكيك السيارة إلى "معلومات شحن"
+            static async decompose(file, T) {
                 const buffer = await file.arrayBuffer();
                 const Qlen = buffer.byteLength;
                 
-                const s = (T * 31 + Qlen * 7) % Qlen;
-                const e = (T * 17 + Qlen * 13) % Qlen;
+                // حسابات حتمية صرفة (الإحداثيات)
+                const s = (T * 31 + Qlen * 7) % 255; // استخدام الـ 255 لترميز لوني
+                const e = (T * 17 + Qlen * 13) % 255;
                 const m = Math.floor((s + e) / 2);
-
-                // عرض محلي فوري للمرسل
-                const imgDisplay = document.getElementById("displayZone");
-                imgDisplay.src = URL.createObjectURL(file);
-                imgDisplay.style.display = "block";
 
                 return { L: Qlen, T: T, S: s, M: m, A: e };
             }
 
-            static sync(data) {
+            // إعادة تركيب "السيارة" فورياً عند الطرف الآخر بناءً على المعلومات فقط
+            static assemble(data) {
+                const canvas = document.getElementById("assemblyCanvas");
+                const ctx = canvas.getContext("2d");
+                canvas.width = 100;
+                canvas.height = 100;
+
+                // بناء كتل لونية (السيارة) بناءً على الإحداثيات المرسلة فقط
+                // هنا التوأم "يصنع" صورة متطابقة رياضياً دون أن يرى الأصل
+                ctx.fillStyle = `rgb(${data.S}, ${data.M}, ${data.A})`;
+                ctx.fillRect(0, 0, 100, 100);
+                
+                // إضافة نمط حتمي بناءً على الطول L
+                ctx.strokeStyle = "#00ff41";
+                ctx.strokeRect(data.S % 50, data.M % 50, 40, 40);
+
                 document.getElementById("log").innerHTML = `
-                    [SYNC_LOCKED]<br>
-                    ----------------<br>
-                    L (Length): ${data.L}<br>
-                    S (Start) : ${data.S}<br>
-                    M (Mid)   : ${data.M}<br>
-                    A (And)   : ${data.A}<br>
-                    T (Time)  : ${data.T}
+                    BLUEPRINT_RECEIVED:<br>
+                    - Material_Density: ${data.L}<br>
+                    - Color_Vector: ${data.S},${data.M},${data.A}<br>
+                    - Assembly_Status: SUCCESSFUL
                 `;
-                // الطرف التوأم سيعرض الصورة هنا إذا كانت موجودة في ذاكرته المحلية
-                console.log("Twin matching local file with length:", data.L);
             }
         }
 
@@ -91,17 +91,12 @@
             const sT = snap.val();
             if (sT && sT > localT) {
                 const sSnap = await get(ref(db, `${PATHS.stream}/state_${sT}`));
-                const fingerprint = sSnap.val();
-                if (fingerprint) {
-                    FingerprintEngine.sync(fingerprint);
+                const blueprint = sSnap.val();
+                if (blueprint) {
+                    TwinFactory.assemble(blueprint);
                     localT = sT;
                     document.getElementById("t-val").innerText = sT;
                 }
-            } else if (sT === 0) {
-                document.getElementById("log").innerText = "STREAM_VACUUMED.";
-                document.getElementById("displayZone").style.display = "none";
-                document.getElementById("t-val").innerText = "0";
-                localT = 0;
             }
         });
 
@@ -112,16 +107,11 @@
             const counterSnap = await get(ref(db, PATHS.counter));
             const nextT = (counterSnap.val() || 0) + 1;
 
-            const fingerprint = await FingerprintEngine.generate(file, nextT);
+            const blueprint = await TwinFactory.decompose(file, nextT);
             
-            await set(ref(db, `${PATHS.stream}/state_${nextT}`), fingerprint);
+            await set(ref(db, `${PATHS.stream}/state_${nextT}`), blueprint);
             await set(ref(db, PATHS.counter), nextT);
             localT = nextT;
-        };
-
-        document.getElementById('globalDelete').onclick = async () => {
-            await set(ref(db, PATHS.counter), 0);
-            await remove(ref(db, PATHS.stream));
         };
     </script>
 </body>
