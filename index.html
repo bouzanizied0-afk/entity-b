@@ -11,6 +11,8 @@
         .controls { display: flex; flex-direction: column; gap: 15px; width: 100%; }
         input[type="file"] { color: #00ff41; }
         .btn-reset { background: #ff4b2b; color: #fff; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-family: inherit; font-weight: bold; }
+        /* وسم الصورة الجديد للعرض الفوري */
+        #displayZone { margin-top: 20px; max-width: 100%; border-radius: 8px; border: 1px solid #333; display: none; }
     </style>
 </head>
 <body>
@@ -25,6 +27,8 @@
             <input type="file" id="filePicker">
             <button id="globalDelete" class="btn-reset">RESET_FINGERPRINT</button>
         </div>
+
+        <img id="displayZone" alt="Preview">
 
         <div class="terminal-log" id="log">
             AWAITING_LOCAL_STATE...
@@ -52,7 +56,6 @@
         let localT = 0;
 
         class FingerprintEngine {
-            // توليد البصمة فقط (A, M, S, L)
             static async generate(file, T) {
                 const buffer = await file.arrayBuffer();
                 const Qlen = buffer.byteLength;
@@ -61,11 +64,14 @@
                 const e = (T * 17 + Qlen * 13) % Qlen;
                 const m = Math.floor((s + e) / 2);
 
-                // إرسال الإحداثيات فقط - لا بيانات ولا نوع
+                // عرض محلي فوري للمرسل
+                const imgDisplay = document.getElementById("displayZone");
+                imgDisplay.src = URL.createObjectURL(file);
+                imgDisplay.style.display = "block";
+
                 return { L: Qlen, T: T, S: s, M: m, A: e };
             }
 
-            // الطرف التوأم يستلم البصمة فقط
             static sync(data) {
                 document.getElementById("log").innerHTML = `
                     [SYNC_LOCKED]<br>
@@ -76,12 +82,11 @@
                     A (And)   : ${data.A}<br>
                     T (Time)  : ${data.T}
                 `;
-                // هنا التوأم يستخدم هذه الأرقام لاستدعاء الملف محلياً
+                // الطرف التوأم سيعرض الصورة هنا إذا كانت موجودة في ذاكرته المحلية
                 console.log("Twin matching local file with length:", data.L);
             }
         }
 
-        // الاستماع للبصمة
         onValue(ref(db, PATHS.counter), async (snap) => {
             const sT = snap.val();
             if (sT && sT > localT) {
@@ -94,12 +99,12 @@
                 }
             } else if (sT === 0) {
                 document.getElementById("log").innerText = "STREAM_VACUUMED.";
+                document.getElementById("displayZone").style.display = "none";
                 document.getElementById("t-val").innerText = "0";
                 localT = 0;
             }
         });
 
-        // إرسال البصمة
         document.getElementById('filePicker').onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
