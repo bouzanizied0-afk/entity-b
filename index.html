@@ -2,143 +2,120 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Sovereign Engine v5.0 | Global Sync</title>
+    <title>Sovereign Stream v6.0 | Atomic Chunks</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.0/browser.js"></script>
     <style>
-        :root { --neon-blue: #00e5ff; --gold: #ffca28; --void: #0a0a0a; }
-        body { background: var(--void); color: var(--neon-blue); font-family: 'Courier New', monospace; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .card { background: #111; border: 1px solid var(--neon-blue); padding: 25px; border-radius: 12px; width: 100%; max-width: 550px; box-shadow: 0 0 30px rgba(0, 229, 255, 0.1); }
-        .log { background: #000; color: #888; padding: 10px; height: 120px; overflow-y: auto; font-size: 12px; border-radius: 5px; margin: 15px 0; border-left: 2px solid var(--gold); }
-        .progress-container { background: #222; height: 10px; border-radius: 5px; margin: 10px 0; overflow: hidden; }
-        .progress-bar { height: 100%; background: var(--gold); width: 0%; transition: 0.3s; }
-        .btn { background: var(--neon-blue); color: #000; border: none; padding: 12px; width: 100%; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        .btn:disabled { background: #333; color: #666; }
-        .hash-display { font-size: 10px; color: var(--gold); background: #000; padding: 5px; margin-top: 5px; word-break: break-all; }
+        :root { --neon: #00e5ff; --danger: #ff4444; --bg: #050505; }
+        body { background: var(--bg); color: #fff; font-family: monospace; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .engine-card { background: #111; border: 2px solid var(--neon); padding: 25px; border-radius: 15px; width: 100%; max-width: 500px; }
+        .status-box { background: #000; padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 13px; border-right: 4px solid var(--neon); }
+        .bar-container { background: #222; height: 12px; border-radius: 6px; margin: 10px 0; position: relative; overflow: hidden; }
+        .bar { height: 100%; background: var(--neon); width: 0%; transition: 0.2s; shadow: 0 0 10px var(--neon); }
+        .log-stream { height: 100px; overflow-y: auto; font-size: 11px; color: #666; background: #000; padding: 5px; }
+        .btn { background: var(--neon); color: #000; border: none; padding: 12px; width: 100%; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2 style="text-align:center; color: var(--gold);">محرك المزامنة v5.0</h2>
-    <p style="font-size: 11px; text-align: center;">المسار: Firebase Realtime | الملف المستهدف: MP4 / 50MB</p>
-
+<div class="engine-card">
+    <h3 style="text-align: center; color: var(--neon);">نظام البث الذري v6.0</h3>
+    
     <input type="file" id="fileInput">
     
-    <div class="log" id="engineLog">> بانتظار إشارة من الخادم...</div>
-    
-    <div id="syncStatus">
-        <div style="display:flex; justify-content: space-between; font-size: 12px;">
-            <span>حالة المزامنة الحية:</span>
-            <span id="percentText">0%</span>
-        </div>
-        <div class="progress-container"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="status-box">
+        <div>إرسال (تونس): <span id="sendProgress">0%</span></div>
+        <div class="bar-container"><div class="bar" id="sendBar"></div></div>
+        
+        <div style="margin-top: 15px;">استقبال (أمريكا): <span id="recvProgress">0%</span></div>
+        <div class="bar-container"><div class="bar" id="recvBar" style="background: #ffca28;"></div></div>
     </div>
 
-    <div id="hashSection" style="display:none">
-        <div class="hash-display" id="mainHash"></div>
-    </div>
-
-    <button id="downloadBtn" class="btn" style="display:none; background: var(--gold);">تجسيد الملف المستلم</button>
+    <div class="log-stream" id="log">بانتظار الإشارة...</div>
+    <button id="finalBtn" class="btn" style="display:none; margin-top:10px;">تجسيد الملف المكتمل</button>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
         authDomain: "zied-e3b78.firebaseapp.com",
         databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "zied-e3b78",
-        storageBucket: "zied-e3b78.firebasestorage.app",
-        messagingSenderId: "774724725374",
-        appId: "1:774724725374:web:a338e16e8689d60dd3062f"
+        projectId: "zied-e3b78"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const logEl = document.getElementById('engineLog');
-    const progressBar = document.getElementById('progressBar');
-    const percentText = document.getElementById('percentText');
+    const CHUNK_SIZE = 1024 * 512; // 512KB لضمان الخفة
+    let sessionID = Math.random().toString(36).substring(7);
 
-    let localSessionID = Math.random().toString(36).substring(7);
-    let receivedChunks = [];
-    let expectedHash = "";
-
-    function log(msg, col = "#888") {
-        logEl.innerHTML += `<div style="color:${col}">> ${msg}</div>`;
-        logEl.scrollTop = logEl.scrollHeight;
+    function updateBar(id, percent) {
+        document.getElementById(id + 'Bar').style.width = percent + '%';
+        document.getElementById(id + 'Progress').innerText = Math.round(percent) + '%';
     }
 
-    async function calculateHash(buffer) {
-        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-        return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // --- جهة الإرسال (تونس) ---
+    // --- الإرسال (تونس) ---
     document.getElementById('fileInput').onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        log("بدء التفكيك والعصر...", "#00e5ff");
-        const arrayBuffer = await file.arrayBuffer();
-        const originalHash = await calculateHash(arrayBuffer);
-        
-        // الضغط الحقيقي
-        const compressed = fflate.zlibSync(new Uint8Array(arrayBuffer), { level: 6 });
-        log(`تم ضغط الملف. الحجم الأصلي: ${(file.size/1024/1024).toFixed(2)}MB`, "#fff");
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        document.getElementById('log').innerText = `تم تقسيم الملف إلى ${totalChunks} قطعة جينية.`;
 
-        // إرسال "رأس العملية"
-        const sessionRef = ref(db, 'v5/session');
-        const header = {
-            name: file.name,
-            type: file.type,
-            hash: originalHash,
-            totalChunks: 1, // سنرسله ككتلة واحدة مضغوطة لضمان السرعة في Firebase
-            sender: localSessionID
-        };
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(file.size, start + CHUNK_SIZE);
+            const chunk = file.slice(start, end);
+            
+            const buffer = await chunk.arrayBuffer();
+            const compressed = fflate.zlibSync(new Uint8Array(buffer));
+            const base64 = btoa(String.fromCharCode.apply(null, compressed));
 
-        // تحويل الزبدة لـ Base64 لمرورها عبر Firebase
-        const base64Data = btoa(String.fromCharCode.apply(null, compressed));
-        
-        log("جاري ضخ الزبدة عبر المسار...");
-        await set(sessionRef, { ...header, data: base64Data, timestamp: Date.now() });
-        log("اكتمل الإرسال. بانتظار التجسيد في الطرف الآخر.", var(--gold));
+            await set(ref(db, `stream/chunk`), {
+                data: base64,
+                index: i,
+                total: totalChunks,
+                name: file.name,
+                type: file.type,
+                sender: sessionID,
+                t: Date.now()
+            });
+
+            updateBar('send', ((i + 1) / totalChunks) * 100);
+        }
     };
 
-    // --- جهة الاستقبال (أمريكا) ---
-    onValue(ref(db, 'v5/session'), async (snapshot) => {
-        const val = snapshot.val();
-        if (!val || val.sender === localSessionID) return;
+    // --- الاستقبال (أمريكا) ---
+    let assembly = [];
+    let lastIndex = -1;
 
-        log("تم كشف نبضة جديدة من الخادم!", "#ffca28");
-        percentText.innerText = "100%";
-        progressBar.style.width = "100%";
+    onValue(ref(db, `stream/chunk`), async (snap) => {
+        const val = snap.val();
+        if (!val || val.sender === sessionID || val.index === lastIndex) return;
 
-        const dataRaw = Uint8Array.from(atob(val.data), c => c.charCodeAt(0));
-        log("جاري فك العصر الجيني (Decompressing)...");
+        lastIndex = val.index;
+        const raw = Uint8Array.from(atob(val.data), c => c.charCodeAt(0));
+        const decompressed = fflate.unzlibSync(raw);
         
-        try {
-            const reconstructed = fflate.unzlibSync(dataRaw);
-            const finalHash = await calculateHash(reconstructed);
+        assembly[val.index] = decompressed;
+        updateBar('recv', ((val.index + 1) / val.total) * 100);
 
-            if (finalHash === val.hash) {
-                log("تطابق بصمة SHA-256! الملف سليم 100%.", "#00ff41");
-                document.getElementById('mainHash').innerText = "بصمة التوأم المتطابقة: " + finalHash;
-                document.getElementById('hashSection').style.display = "block";
-                
-                const downloadBtn = document.getElementById('downloadBtn');
-                downloadBtn.style.display = "block";
-                downloadBtn.onclick = () => {
-                    const url = URL.createObjectURL(new Blob([reconstructed], {type: val.type}));
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = "TWIN_" + val.name;
-                    a.click();
-                };
-            }
-        } catch (err) {
-            log("خطأ في إعادة البناء: " + err.message, "red");
+        // الحذف الفوري من الخادم بعد الاستلام (منطق الزبدة التي تختفي)
+        await remove(ref(db, `stream/chunk`));
+
+        if (assembly.filter(x => x).length === val.total) {
+            document.getElementById('log').innerText = "تم اكتمال التجسيد الذري!";
+            const btn = document.getElementById('finalBtn');
+            btn.style.display = "block";
+            btn.onclick = () => {
+                const blob = new Blob(assembly, { type: val.type });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "RECONSTRUCTED_" + val.name;
+                a.click();
+            };
         }
     });
 </script>
