@@ -2,94 +2,100 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Twin DNA Engine v12.0</title>
+    <title>Twin Video Engine v1.0</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #050505; color: #00ff41; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .factory-box { border: 2px solid #00ff41; padding: 20px; width: 450px; background: #000; text-align: center; box-shadow: 0 0 30px rgba(0,255,65,0.2); }
-        canvas { margin-top: 20px; border: 1px solid #333; max-width: 100%; image-rendering: pixelated; }
-        .stats { font-size: 12px; margin-top: 10px; color: #008f11; display: flex; justify-content: space-between; }
-        .log { font-size: 11px; background: #080808; padding: 10px; margin-top: 15px; border: 1px solid #111; height: 60px; overflow: hidden; text-align: left; }
+        .factory-box { border: 2px solid #00ff41; padding: 20px; width: 480px; background: #000; text-align: center; }
+        video, canvas { width: 100%; border: 1px solid #111; margin-top: 10px; background: #000; }
+        .stream-info { font-size: 11px; color: #008f11; display: flex; justify-content: space-between; margin-top: 5px; }
+        .btn-stream { background: #00ff41; color: #000; border: none; padding: 10px; width: 100%; cursor: pointer; font-weight: bold; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="factory-box">
-        <h3>TWIN_DNA_ASSEMBLER</h3>
-        <div class="stats">
-            <span>DNA_SEQUENCE: <span id="dna-progress">0</span>%</span>
-            <span>STATUS: <span id="status">IDLE</span></span>
-        </div>
-
-        <input type="file" id="source" accept="image/*" style="color:#00ff41; font-size: 12px;">
+        <h3>VIDEO_GENE_STREAMER</h3>
         
-        <canvas id="renderTarget"></canvas>
+        <input type="file" id="videoSource" accept="video/*" style="font-size: 12px; color: #00ff41;">
+        <video id="localPreview" muted controls style="display:none;"></video>
+        
+        <button id="startSync" class="btn-stream">START_TWIN_BROADCAST</button>
 
-        <div class="log" id="terminal">READY_FOR_DECONSTRUCTION...</div>
+        <canvas id="twinDisplay"></canvas>
+
+        <div class="stream-info">
+            <span>BITRATE: <span id="bitrate">0</span> kb/s</span>
+            <span>FRAME_T: <span id="frame-t">0</span></span>
+        </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
           apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
           authDomain: "zied-e3b78.firebaseapp.com",
           databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
           projectId: "zied-e3b78",
-          storageBucket: "zied-e3b78.firebasestorage.app",
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        const canvas = document.getElementById('renderTarget');
+        const video = document.getElementById('localPreview');
+        const canvas = document.getElementById('twinDisplay');
         const ctx = canvas.getContext('2d');
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
 
-        // --- المستقبل (التوأم): يركب الصورة من "الأرقام" المستلمة ---
-        onValue(ref(db, "temporal/stream"), (snap) => {
-            const dna = snap.val();
-            if (dna && dna.raw) {
-                document.getElementById('status').innerText = "ASSEMBLING...";
+        // --- المستقبل: تركيب الفيديو من بصمات الإطارات ---
+        onValue(ref(db, "video_stream/frame"), (snap) => {
+            const frameData = snap.val();
+            if (frameData) {
                 const img = new Image();
                 img.onload = () => {
                     canvas.width = img.width;
                     canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
-                    document.getElementById('status').innerText = "COMPLETE";
+                    document.getElementById('frame-t').innerText = frameData.t;
                 };
-                // تحويل مصفوفة الأرقام المستلمة إلى مادة بصرية
-                img.src = dna.raw;
-                document.getElementById('dna-progress').innerText = "100";
+                img.src = frameData.dna;
             }
         });
 
-        // --- المرسل (المفكك): يحول الصورة إلى "بصمة جينية" رقمية ---
-        document.getElementById('source').onchange = async (e) => {
+        // --- المرسل: تفكيك الفيديو إلى نبضات جينية ---
+        document.getElementById('videoSource').onchange = (e) => {
             const file = e.target.files[0];
-            if (!file) return;
-
-            document.getElementById('status').innerText = "DECONSTRUCTING...";
-            const reader = new FileReader();
-            
-            reader.onload = async (event) => {
-                const dataURL = event.target.result;
-                
-                // هنا نقوم بـ "التفكيك": تحويل المادة إلى بصمة معلوماتية (Base64)
-                // في نظام التوأم، هذه البصمة هي "كتالوج التركيب"
-                const dnaPackage = {
-                    t: Date.now(),
-                    l: file.size,
-                    raw: dataURL // هذه هي مادة الليغو (الأرقام)
-                };
-
-                // إرسال البصمة للخادم
-                await set(ref(db, "temporal/stream"), dnaPackage);
-                await set(ref(db, "temporal/counter"), Date.now());
-                
-                document.getElementById('terminal').innerText = `DNA_SENT: ${file.size} BYTES`;
-            };
-            reader.readAsDataURL(file);
+            video.src = URL.createObjectURL(file);
+            video.style.display = "block";
         };
+
+        document.getElementById('startSync').onclick = () => {
+            video.play();
+            streamFrames();
+        };
+
+        async function streamFrames() {
+            if (video.paused || video.ended) return;
+
+            // رسم الإطار الحالي في كانفاس مخفي لتفكيكه
+            offscreenCanvas.width = video.videoWidth / 4; // تقليل الحجم لسرعة النسخة المبدئية
+            offscreenCanvas.height = video.videoHeight / 4;
+            offscreenCtx.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+
+            // تحويل الإطار إلى "بصمة جينية" (DNA)
+            const frameDNA = offscreenCanvas.toDataURL("image/webp", 0.3);
+
+            // إرسال البصمة فورياً
+            set(ref(db, "video_stream/frame"), {
+                t: video.currentTime.toFixed(2),
+                dna: frameDNA
+            });
+
+            // تكرار العملية (24 إطار في الثانية تقريباً)
+            requestAnimationFrame(streamFrames);
+        }
     </script>
 </body>
 </html>
