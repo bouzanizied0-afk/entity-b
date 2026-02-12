@@ -2,7 +2,6 @@
 // نسخة 4.0 محلية ومستقلة كـ JS Module
 // لا تتضمن أي HTML أو DOM داخلي
 
-import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-database.js";
 
 // ================== دوال أساسية ==================
 
@@ -113,39 +112,4 @@ export function extractMatrix(imgOrCanvas, matrixWidth = 100, matrixHeight = 100
     return localMatrix;
 }
 
-/**
- * إرسال المصفوفة كاملة إلى Firebase مشفرة ومضغوطة
- * @param {number[][]} localMatrix 
- * @param {DatabaseReference} matrixRef 
- * @param {number} key 
- */
-export async function sendMatrix(localMatrix, matrixRef, key = 7) {
-    const updates = {};
-    localMatrix.forEach((row, y) => {
-        const encrypted = encryptRow(row, key);
-        const compressed = compressRow(encrypted);
-        updates[y] = compressed;
-    });
-    await set(matrixRef, updates);
-}
 
-/**
- * الاستماع للمصفوفة من Firebase وتحديث أي canvas مباشر
- * @param {DatabaseReference} matrixRef 
- * @param {number[][]} liveMatrix 
- * @param {HTMLCanvasElement} canvas 
- * @param {number} key 
- */
-export function listenMatrix(matrixRef, liveMatrix, canvas, key = 7) {
-    onValue(matrixRef, (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        Object.entries(data).forEach(([y, compressed]) => {
-            const decrypted = decryptRow(decompressRow(compressed), key);
-            liveMatrix[Number(y)] = decrypted;
-        });
-
-        drawMatrix(liveMatrix, canvas);
-    });
-}
