@@ -1,38 +1,33 @@
-  // --- إعداد Firebase ---
-    import { db, PATHS } from "./serverCore.js";
-    
-    // --- عداد محلي للمزامنة ---
-    let localT = 0;
+/**
+ * matrixTunnel.js - محرك النفق الرقمي
+ * الوظيفة: تحويل بيانات الإنترنت الخام إلى نبضات مصفوفة مشفرة
+ */
 
-// --- دالة لإرسال صورة ---
-export async function sendImage(file) {
-    if (!file) return;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8 = new Uint8Array(arrayBuffer);
-    const base64Data = btoa(String.fromCharCode.apply(null, uint8));
-
-    const counterSnap = await get(ref(db, PATHS.counter));
-const nextT = (counterSnap.val() || 0) + 1;
-
-const payload = { data: base64Data, type: file.type, T: nextT };
-
-await set(ref(db, `${PATHS.stream}/state_${nextT}`), payload);
-await set(ref(db, PATHS.counter), nextT);
-
-    localT = nextT; // تحديث العداد المحلي
-}
-
-// --- دالة لتلقي الصور فورًا ---
-export function onImageReceived(callback) {
-    onValue(ref(db, PATHS.counter), async (snap) => {
-    …
-    const stateSnap = await get(ref(db, `${PATHS.stream}/state_${serverT}`));
-            const state = stateSnap.val();
-            if (state) {
-                const dataURL = `data:${state.type};base64,${state.data}`;
-                callback(dataURL, state.T);
-            }
+export const matrixTunnel = {
+    // 1. تحويل الطلب إلى "نبضة مصفوفة" (Encoding)
+    encodeRequest: (url) => {
+        console.log("🔒 تشفير الطلب إلى نبضة مصفوفة...");
+        // تحويل النص إلى أرقام مصفوفة (0-15) للتمويه
+        const buffer = btoa(url); // تحويل العنوان لترميز Base64
+        let matrixPulse = [];
+        for (let i = 0; i < buffer.length; i++) {
+            matrixPulse.push(buffer.charCodeAt(i) % 16); 
         }
-    });
-}
+        return matrixPulse; // هذه هي النبضة التي ستمر عبر ثغرة الـ DNS أو الأنبوب
+    },
+
+    // 2. فك تشفير البيانات القادمة من السيرفر (Decoding)
+    decodeResponse: (matrixData) => {
+        console.log("🔓 فك تشفير البيانات القادمة من النفق...");
+        // هنا نقوم بتحويل الأرقام القادمة من أمريكا إلى بيانات يفهمها المتصفح
+        // في هذه المرحلة، سنحولها إلى "خريطة بصرية" ليتم عرضها في ملف الـ index
+        return matrixData;
+    },
+
+    // 3. بوابة الاتصال (The Gateway)
+    sendThroughTunnel: async (socket, url) => {
+        const pulse = matrixTunnel.encodeRequest(url);
+        socket.emit("request-tunnel", { data: pulse });
+        document.getElementById('status').innerText = "📡 النفق نشط: يتم الجلب من الخارج...";
+    }
+};
