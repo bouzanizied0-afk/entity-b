@@ -2,15 +2,20 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>نظام المصفوفة الحية - معالج الصور</title>
+    <title>نظام المصفوفة الحية - معالج الصور الاحترافي</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
         canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; background: #000; }
         .controls { position: absolute; top: 10px; background: rgba(0, 20, 0, 0.9); padding: 15px; border: 1px solid #00ff41; display: flex; gap: 10px; align-items: center; z-index: 100; }
-        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; }
-        button:disabled { background: #004400; color: #00ff41; }
+        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #fff; }
+        button:disabled { background: #004400; color: #00ff41; cursor: not-allowed; }
         input[type="file"] { font-size: 12px; }
         .info { position: absolute; bottom: 10px; left: 10px; font-size: 12px; }
+        
+        /* شريط التقدم */
+        #progressContainer { width: 200px; height: 10px; border: 1px solid #00ff41; display: none; background: #000; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: #00ff41; transition: width 0.1s; }
     </style>
 </head>
 <body>
@@ -18,6 +23,7 @@
 <div class="controls">
     <input type="file" id="imageInput" accept="image/*">
     <button id="deconstructBtn">تفكيك</button>
+    <div id="progressContainer"><div id="progressBar"></div></div>
     <button id="sendBtn" disabled>إرسال إلى الخادم</button>
     <button id="masterBtn">وضع التلقائي</button>
 </div>
@@ -29,6 +35,8 @@
 <canvas id="matrixCanvas"></canvas>
 
 <script type="module">
+    // استيراد الدوال من المحرك ومن Firebase
+    import { extractMatrix, sendMatrix, decompressRow, decryptRow } from './matrixEngine.js';
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
@@ -52,91 +60,112 @@
     const ROWS = 100; const COLS = 100; const CELL_SIZE = 7;
     canvas.width = COLS * CELL_SIZE; canvas.height = ROWS * CELL_SIZE;
 
-    let localMatrixRows = [];
-    let processedMatrix = []; // لحفظ مصفوفة الصورة المفككة
+    let liveMatrix = Array.from({length: 100}, () => Array(100).fill(0));
+    let localProcessedMatrix = null;
     let globalCounter = 0;
     let isMaster = false;
 
-    // استقبال البيانات
+    // --- استقبال البيانات الحقيقية من الخادم وفك تشفيرها ---
     onValue(matrixRef, (snapshot) => {
         const data = snapshot.val();
-        if (data) localMatrixRows = Object.values(data);
+        if (data) {
+            Object.entries(data).forEach(([y, compressed]) => {
+                // استخدام دوال المحرك لفك الضغط والتشفير (Key=7 كما في الملف)
+                const decrypted = decryptRow(decompressRow(compressed), 7);
+                liveMatrix[Number(y)] = decrypted;
+            });
+            document.getElementById('status').innerText = "تم استلام صورة طبق الأصل";
+        }
     });
+
     onValue(counterRef, (snapshot) => {
         globalCounter = snapshot.val() || 0;
         document.getElementById('countDisplay').innerText = globalCounter;
     });
 
-    // 1. زر التفكيك: تحويل الصورة إلى مصفوفة أرقام
-    document.getElementById('deconstructBtn').onclick = () => {
+    // --- 1. زر التفكيك مع شريط التقدم ---
+    document.getElementById('deconstructBtn').onclick = async () => {
         const file = document.getElementById('imageInput').files[0];
         if (!file) return alert("اختر صورة أولاً");
 
-        const img = new Image();
-        img.onload = () => {
-            const tempCanvas = document.createElement('canvas');
-            const tCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = 100; tempCanvas.height = 100;
-            tCtx.drawImage(img, 0, 0, 100, 100);
-            const imgData = tCtx.getImageData(0, 0, 100, 100).data;
+        const status = document.getElementById('status');
+        const pContainer = document.getElementById('progressContainer');
+        const pBar = document.getElementById('progressBar');
 
-            processedMatrix = [];
-            for (let y = 0; y < 100; y++) {
-                let rowStr = "";
-                for (let x = 0; x < 100; x++) {
-                    const idx = (y * 100 + x) * 4;
-                    const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
-                    rowStr += Math.floor(brightness / 26); // تحويل السطوع لرقم 0-9
-                }
-                processedMatrix.push(rowStr);
-            }
-            document.getElementById('sendBtn').disabled = false;
-            document.getElementById('status').innerText = "تم التفكيك بنجاح";
+        status.innerText = "جاري التفكيك...";
+        pContainer.style.display = "block";
+        pBar.style.width = "0%";
+
+        const img = new Image();
+        img.onload = async () => {
+            // محاكاة بصرية لسرعة التفكيك
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 5;
+                pBar.style.width = progress + "%";
+                if (progress >= 100) clearInterval(interval);
+            }, 20);
+
+            // استخدام دالة المحرك لاستخراج المصفوفة (scale=16 لضغط القيم بين 0-15)
+            localProcessedMatrix = extractMatrix(img, 100, 100, 16);
+            
+            setTimeout(() => {
+                pContainer.style.display = "none";
+                document.getElementById('sendBtn').disabled = false;
+                status.innerText = "تم التفكيك بنجاح";
+                // عرض الصورة محلياً على المصفوفة قبل الإرسال
+                liveMatrix = [...localProcessedMatrix];
+            }, 500);
         };
         img.src = URL.createObjectURL(file);
     };
 
-    // 2. زر الإرسال: دفع مصفوفة الصورة إلى Firebase
-    document.getElementById('sendBtn').onclick = () => {
-        if (processedMatrix.length === 100) {
-            const updates = {};
-            processedMatrix.forEach((row, i) => updates[`r${i}`] = row);
-            set(matrixRef, updates);
-            document.getElementById('status').innerText = "تم الإرسال لجميع المتصفحات";
+    // --- 2. زر الإرسال باستخدام محرك sendMatrix ---
+    document.getElementById('sendBtn').onclick = async () => {
+        if (!localProcessedMatrix) return;
+        document.getElementById('status').innerText = "جاري الإرسال للخادم...";
+        
+        try {
+            // استخدام دالة المحرك لإرسال البيانات مشفرة ومضغوطة
+            await sendMatrix(localProcessedMatrix, matrixRef, 7);
+            document.getElementById('status').innerText = "الصورة الآن حية لدى الجميع";
+        } catch (e) {
+            document.getElementById('status').innerText = "خطأ في الإرسال";
         }
     };
 
-    // الوضع التلقائي (Master)
+    // الوضع التلقائي (Master) للعداد
     document.getElementById('masterBtn').onclick = () => {
         isMaster = !isMaster;
         document.getElementById('status').innerText = isMaster ? "وضع التلقائي نشط" : "توقف التلقائي";
     };
 
-    // تحديث دوري (فقط إذا كان Master نشط)
     setInterval(() => {
         if (!isMaster) return;
-        let nextCounter = (globalCounter % 10) + 1;
+        let nextCounter = (globalCounter % 15) + 1; // 15 لأن Scale المحرك 16
         set(counterRef, nextCounter);
     }, 500);
 
+    // --- دالة الرسم (تعتمد كلياً على القيم الرقمية) ---
     function render() {
         ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.font = "6px monospace";
 
         for (let r = 0; r < ROWS; r++) {
-            const rowContent = localMatrixRows[r];
-            if (!rowContent) continue;
+            const row = liveMatrix[r];
+            if (!row) continue;
             for (let c = 0; c < COLS; c++) {
-                const char = rowContent[c];
-                const val = parseInt(char);
+                const val = row[c];
+                const char = val.toString(16).toUpperCase(); // عرض أرقام سداسية عشرية
                 const x = c * CELL_SIZE; const y = r * CELL_SIZE;
 
-                if (val === globalCounter) {
+                if (val === globalCounter && val !== 0) {
                     ctx.fillStyle = "#fff";
-                    ctx.shadowBlur = 5; ctx.shadowColor = "#00ff41";
+                    ctx.shadowBlur = 8; ctx.shadowColor = "#00ff41";
                 } else {
-                    ctx.fillStyle = `rgba(0, 255, 65, ${val / 10 + 0.1})`;
+                    // التوهج يعتمد على القيمة الرقمية المستخرجة من الصورة
+                    ctx.fillStyle = `rgba(0, 255, 65, ${val / 16 + 0.1})`;
                     ctx.shadowBlur = 0;
                 }
                 ctx.fillText(char, x, y + 6);
