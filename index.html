@@ -2,178 +2,59 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>نظام المصفوفة الحية - معالج الصور الاحترافي</title>
+    <title>إختبار الأنبوب السريع</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
-        canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; background: #000; }
-        .controls { position: absolute; top: 10px; background: rgba(0, 20, 0, 0.9); padding: 15px; border: 1px solid #00ff41; display: flex; gap: 10px; align-items: center; z-index: 100; }
-        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #fff; }
-        button:disabled { background: #004400; color: #00ff41; cursor: not-allowed; }
-        input[type="file"] { font-size: 12px; }
-        .info { position: absolute; bottom: 10px; left: 10px; font-size: 12px; }
-        
-        /* شريط التقدم */
-        #progressContainer { width: 200px; height: 10px; border: 1px solid #00ff41; display: none; background: #000; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #00ff41; transition: width 0.1s; }
+        body { background: #000; color: #00ff41; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
+        #counter { font-size: 100px; margin: 20px; text-shadow: 0 0 20px #00ff41; }
+        button { padding: 20px 40px; font-size: 20px; background: #00ff41; border: none; cursor: pointer; font-weight: bold; }
+        .status { margin-bottom: 20px; font-size: 14px; }
     </style>
 </head>
 <body>
 
-<div class="controls">
-    <input type="file" id="imageInput" accept="image/*">
-    <button id="deconstructBtn">تفكيك</button>
-    <div id="progressContainer"><div id="progressBar"></div></div>
-    <button id="sendBtn" disabled>إرسال إلى الخادم</button>
-    <button id="masterBtn">وضع التلقائي</button>
-</div>
+    <div class="status" id="status">جاري الاتصال بالخادم...</div>
+    <div id="counter">0</div>
+    <button id="addBtn">إضافة +1</button>
 
-<div class="info">
-    الحالة: <span id="status">جاهز</span> | العداد: <span id="countDisplay">0</span>
-</div>
-
-<canvas id="matrixCanvas"></canvas>
-
-<script type="module">
-    // استيراد الدوال من المحرك ومن Firebase
-    import { extractMatrix, sendMatrix, decompressRow, decryptRow } from './matrixEngine.js';
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
-        authDomain: "zied-e3b78.firebaseapp.com",
-        databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "zied-e3b78",
-        storageBucket: "zied-e3b78.firebasestorage.app",
-        messagingSenderId: "774724725374",
-        appId: "1:774724725374:web:a338e16e8689d60dd3062f"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const matrixRef = ref(db, "live_matrix/data");
-    const counterRef = ref(db, "live_matrix/counter");
-
-    const canvas = document.getElementById('matrixCanvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const ROWS = 100; const COLS = 100; const CELL_SIZE = 7;
-    canvas.width = COLS * CELL_SIZE; canvas.height = ROWS * CELL_SIZE;
-
-    let liveMatrix = Array.from({length: 100}, () => Array(100).fill(0));
-    let localProcessedMatrix = null;
-    let globalCounter = 0;
-    let isMaster = false;
-
-    // --- استقبال البيانات الحقيقية من الخادم وفك تشفيرها ---
-    onValue(matrixRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            Object.entries(data).forEach(([y, compressed]) => {
-                // استخدام دوال المحرك لفك الضغط والتشفير (Key=7 كما في الملف)
-                const decrypted = decryptRow(decompressRow(compressed), 7);
-                liveMatrix[Number(y)] = decrypted;
-            });
-            document.getElementById('status').innerText = "تم استلام صورة طبق الأصل";
-        }
-    });
-
-    onValue(counterRef, (snapshot) => {
-        globalCounter = snapshot.val() || 0;
-        document.getElementById('countDisplay').innerText = globalCounter;
-    });
-
-    // --- 1. زر التفكيك مع شريط التقدم ---
-    document.getElementById('deconstructBtn').onclick = async () => {
-        const file = document.getElementById('imageInput').files[0];
-        if (!file) return alert("اختر صورة أولاً");
-
-        const status = document.getElementById('status');
-        const pContainer = document.getElementById('progressContainer');
-        const pBar = document.getElementById('progressBar');
-
-        status.innerText = "جاري التفكيك...";
-        pContainer.style.display = "block";
-        pBar.style.width = "0%";
-
-        const img = new Image();
-        img.onload = async () => {
-            // محاكاة بصرية لسرعة التفكيك
-            let progress = 0;
-            const interval = setInterval(() => {
-                progress += 5;
-                pBar.style.width = progress + "%";
-                if (progress >= 100) clearInterval(interval);
-            }, 20);
-
-            // استخدام دالة المحرك لاستخراج المصفوفة (scale=16 لضغط القيم بين 0-15)
-            localProcessedMatrix = extractMatrix(img, 100, 100, 16);
-            
-            setTimeout(() => {
-                pContainer.style.display = "none";
-                document.getElementById('sendBtn').disabled = false;
-                status.innerText = "تم التفكيك بنجاح";
-                // عرض الصورة محلياً على المصفوفة قبل الإرسال
-                liveMatrix = [...localProcessedMatrix];
-            }, 500);
-        };
-        img.src = URL.createObjectURL(file);
-    };
-
-    // --- 2. زر الإرسال باستخدام محرك sendMatrix ---
-    document.getElementById('sendBtn').onclick = async () => {
-        if (!localProcessedMatrix) return;
-        document.getElementById('status').innerText = "جاري الإرسال للخادم...";
+    <script>
+        // رابط خادمك في Replit
+        const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev/";
         
-        try {
-            // استخدام دالة المحرك لإرسال البيانات مشفرة ومضغوطة
-            await sendMatrix(localProcessedMatrix, matrixRef, 7);
-            document.getElementById('status').innerText = "الصورة الآن حية لدى الجميع";
-        } catch (e) {
-            document.getElementById('status').innerText = "خطأ في الإرسال";
-        }
-    };
+        const socket = io(SERVER_URL, { transports: ["websocket"] });
+        let count = 0;
 
-    // الوضع التلقائي (Master) للعداد
-    document.getElementById('masterBtn').onclick = () => {
-        isMaster = !isMaster;
-        document.getElementById('status').innerText = isMaster ? "وضع التلقائي نشط" : "توقف التلقائي";
-    };
+        const statusDiv = document.getElementById('status');
+        const counterDiv = document.getElementById('counter');
+        const addBtn = document.getElementById('addBtn');
 
-    setInterval(() => {
-        if (!isMaster) return;
-        let nextCounter = (globalCounter % 15) + 1; // 15 لأن Scale المحرك 16
-        set(counterRef, nextCounter);
-    }, 500);
+        // عند الاتصال
+        socket.on("connect", () => {
+            statusDiv.innerText = "✅ متصل بالخادم: " + socket.id;
+            statusDiv.style.color = "#00ff41";
+        });
 
-    // --- دالة الرسم (تعتمد كلياً على القيم الرقمية) ---
-    function render() {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.font = "6px monospace";
-
-        for (let r = 0; r < ROWS; r++) {
-            const row = liveMatrix[r];
-            if (!row) continue;
-            for (let c = 0; c < COLS; c++) {
-                const val = row[c];
-                const char = val.toString(16).toUpperCase(); // عرض أرقام سداسية عشرية
-                const x = c * CELL_SIZE; const y = r * CELL_SIZE;
-
-                if (val === globalCounter && val !== 0) {
-                    ctx.fillStyle = "#fff";
-                    ctx.shadowBlur = 8; ctx.shadowColor = "#00ff41";
-                } else {
-                    // التوهج يعتمد على القيمة الرقمية المستخرجة من الصورة
-                    ctx.fillStyle = `rgba(0, 255, 65, ${val / 16 + 0.1})`;
-                    ctx.shadowBlur = 0;
-                }
-                ctx.fillText(char, x, y + 6);
+        // عند استقبال "نبضة" من الأنبوب
+        socket.on("matrix-relay", (data) => {
+            if(data.testCounter !== undefined) {
+                count = data.testCounter;
+                counterDiv.innerText = count;
+                console.log("استلمت تحديث من جهاز آخر:", count);
             }
-        }
-        requestAnimationFrame(render);
-    }
-    render();
-</script>
+        });
+
+        // عند الضغط على الزر (إرسال للجميع)
+        addBtn.onclick = () => {
+            count++;
+            counterDiv.innerText = count;
+            // نرسل القيمة الجديدة عبر الأنبوب
+            socket.emit("matrix-relay", { testCounter: count });
+        };
+
+        socket.on("connect_error", (err) => {
+            statusDiv.innerText = "❌ فشل الاتصال: تأكد أن Replit يعمل (Run)";
+            statusDiv.style.color = "red";
+        });
+    </script>
 </body>
 </html>
