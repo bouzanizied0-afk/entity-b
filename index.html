@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>نظام المصفوفة الحية - الأنبوب السريع</title>
+    <title>نظام المصفوفة الحية - الربط الاحترافي</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
@@ -11,7 +11,6 @@
         button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
         button:hover { background: #fff; }
         button:disabled { background: #004400; color: #00ff41; cursor: not-allowed; }
-        input[type="file"] { font-size: 12px; }
         .info { position: absolute; bottom: 10px; left: 10px; font-size: 12px; }
         #progressContainer { width: 200px; height: 10px; border: 1px solid #00ff41; display: none; background: #000; overflow: hidden; }
         #progressBar { width: 0%; height: 100%; background: #00ff41; transition: width 0.1s; }
@@ -23,26 +22,23 @@
     <input type="file" id="imageInput" accept="image/*">
     <button id="deconstructBtn">تفكيك</button>
     <div id="progressContainer"><div id="progressBar"></div></div>
-    <button id="sendBtn" disabled>بث حي للمصفوفة</button>
+    <button id="sendBtn" disabled>بث عبر الأنبوب</button>
     <button id="masterBtn">وضع التلقائي</button>
 </div>
 
 <div class="info">
-    الحالة: <span id="status">جاري الاتصال بالأنبوب...</span> | العداد: <span id="countDisplay">0</span>
+    الحالة: <span id="status">جاري الاتصال...</span> | العداد: <span id="countDisplay">0</span>
 </div>
 
 <canvas id="matrixCanvas"></canvas>
 
 <script type="module">
-    import { extractMatrix } from './matrixEngine.js';
+    // استيراد الدوال من ملفك المنفصل كما هي دون أي تعديل فيه
+    import { extractMatrix, compressRow, encryptRow, decompressRow, decryptRow } from './matrixEngine.js';
 
-    // --- الرابط الذي نجح في اختبار العداد ---
+    // إعداد الأنبوب السريع (نفس الرابط الناجح)
     const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
-    
-    const socket = io(SERVER_URL, { 
-        transports: ["websocket", "polling"],
-        forceNew: true 
-    });
+    const socket = io(SERVER_URL, { transports: ["websocket", "polling"] });
 
     const canvas = document.getElementById('matrixCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -54,15 +50,15 @@
     let globalCounter = 0;
     let isMaster = false;
 
-    // --- إدارة الاتصال والاستلام اللحظي ---
-    socket.on("connect", () => {
-        document.getElementById('status').innerText = "✅ متصل بالأنبوب السريع";
-    });
-
+    // --- استقبال البيانات وفك تشفيرها باستخدام دوال المحرك ---
     socket.on("matrix-relay", (data) => {
-        if (data.matrix) {
-            liveMatrix = data.matrix;
-            document.getElementById('status').innerText = "تم استلام مصفوفة حية";
+        if (data.payload) {
+            Object.entries(data.payload).forEach(([y, compressed]) => {
+                // استخدام دوال المحرك المستوردة لفك التشفير (Key=7)
+                const decrypted = decryptRow(decompressRow(compressed), 7);
+                liveMatrix[Number(y)] = decrypted;
+            });
+            document.getElementById('status').innerText = "تم استلام بث مشفر";
         }
         if (data.counter !== undefined) {
             globalCounter = data.counter;
@@ -70,82 +66,77 @@
         }
     });
 
-    // --- 1. تفكيك الصورة ---
+    socket.on("connect", () => { document.getElementById('status').innerText = "متصل بالأنبوب"; });
+
+    // --- 1. التفكيك (يستخدم محركك مباشرة) ---
     document.getElementById('deconstructBtn').onclick = async () => {
         const file = document.getElementById('imageInput').files[0];
         if (!file) return alert("اختر صورة أولاً");
 
-        const status = document.getElementById('status');
-        const pContainer = document.getElementById('progressContainer');
-        const pBar = document.getElementById('progressBar');
+        document.getElementById('status').innerText = "جاري التفكيك...";
+        document.getElementById('progressContainer').style.display = "block";
+        document.getElementById('progressBar').style.width = "50%"; // محاكاة حركية
 
-        status.innerText = "جاري التفكيك...";
-        pContainer.style.display = "block";
-        
         const img = new Image();
         img.onload = () => {
-            pBar.style.width = "100%";
-            // استخراج المصفوفة (scale=16)
+            // استخدام دالة المحرك المستوردة
             localProcessedMatrix = extractMatrix(img, 100, 100, 16);
+            document.getElementById('progressBar').style.width = "100%";
+            
             setTimeout(() => {
-                pContainer.style.display = "none";
+                document.getElementById('progressContainer').style.display = "none";
                 document.getElementById('sendBtn').disabled = false;
-                status.innerText = "جاهز للبث السريع";
-                liveMatrix = [...localProcessedMatrix]; // عرضها محلياً فوراً
+                document.getElementById('status').innerText = "تم التفكيك بنجاح";
+                liveMatrix = [...localProcessedMatrix];
             }, 300);
         };
         img.src = URL.createObjectURL(file);
     };
 
-    // --- 2. الإرسال عبر الأنبوب (بث مباشر) ---
+    // --- 2. الإرسال (تجهيز البيانات بنفس منطق المحرك ولكن عبر الأنبوب) ---
     document.getElementById('sendBtn').onclick = () => {
         if (!localProcessedMatrix) return;
-        document.getElementById('status').innerText = "جاري البث الفوري...";
         
-        // إرسال البيانات كحزمة واحدة سريعة
-        socket.emit("matrix-relay", {
-            matrix: localProcessedMatrix,
-            counter: globalCounter
+        const packedData = {};
+        localProcessedMatrix.forEach((row, y) => {
+            // استخدام دوال المحرك (التشفير والضغط) قبل الإرسال
+            const encrypted = encryptRow(row, 7);
+            const compressed = compressRow(encrypted);
+            packedData[y] = compressed;
         });
+
+        socket.emit("matrix-relay", { payload: packedData, counter: globalCounter });
+        document.getElementById('status').innerText = "تم البث بنجاح";
     };
 
-    // وضع التلقائي (التحكم في العداد)
+    // وضع التلقائي
     document.getElementById('masterBtn').onclick = () => {
         isMaster = !isMaster;
-        document.getElementById('status').innerText = isMaster ? "وضع البث النشط" : "توقف البث";
+        document.getElementById('status').innerText = isMaster ? "بث تلقائي نشط" : "توقف البث";
     };
 
     setInterval(() => {
         if (!isMaster) return;
         globalCounter = (globalCounter % 15) + 1;
         document.getElementById('countDisplay').innerText = globalCounter;
-        
-        // بث تحديث العداد فقط لسرعة استجابة هائلة
         socket.emit("matrix-relay", { counter: globalCounter });
-    }, 200); // سرعة تحديث 200ms (خمس مرات في الثانية)
+    }, 300);
 
-    // --- محرك الرسم الاحترافي ---
+    // --- الرسم ---
     function render() {
         ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.font = "6px monospace";
-
         for (let r = 0; r < ROWS; r++) {
             const row = liveMatrix[r];
-            if (!row) continue;
             for (let c = 0; c < COLS; c++) {
                 const val = row[c];
-                const char = val.toString(16).toUpperCase();
                 const x = c * CELL_SIZE; const y = r * CELL_SIZE;
-
                 if (val === globalCounter && val !== 0) {
                     ctx.fillStyle = "#fff";
-                    ctx.shadowBlur = 8; ctx.shadowColor = "#00ff41";
                 } else {
                     ctx.fillStyle = `rgba(0, 255, 65, ${val / 16 + 0.1})`;
-                    ctx.shadowBlur = 0;
                 }
-                ctx.fillText(char, x, y + 6);
+                ctx.fillText(val.toString(16).toUpperCase(), x, y + 6);
             }
         }
         requestAnimationFrame(render);
