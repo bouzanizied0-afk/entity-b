@@ -2,97 +2,131 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>مصفوفة التزامن الدوري 100x100</title>
+    <title>نظام إعادة التوليد المصفوفي - t-Key</title>
     <style>
-        body { margin: 0; background: #050505; color: #00ffcc; font-family: monospace; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        canvas { border: 1px solid #333; }
-        .info { position: absolute; top: 10px; left: 10px; font-size: 12px; color: #555; }
+        body { background: #050505; color: #00ffcc; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .grid-container { border: 2px solid #333; position: relative; width: 500px; height: 500px; background: #000; overflow: hidden; }
+        canvas { display: block; }
+        .controls { background: #111; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #00ffcc; width: 480px; }
+        button { background: #00ffcc; color: #000; border: none; padding: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .status { font-size: 12px; margin-top: 10px; color: #888; }
+        #preview { width: 100px; height: 100px; border: 1px solid #444; margin-top: 10px; object-fit: cover; display: none; }
     </style>
 </head>
 <body>
-    <div class="info">نظام المصفوفة: 100×100 | التزامن: فعال</div>
-    <canvas id="matrixCanvas"></canvas>
+
+    <div class="controls">
+        <input type="file" id="imageInput" accept="image/*">
+        <img id="preview" alt="المصدر">
+        <button id="sendBtn">إرسال مفتاح t فقط</button>
+        <div id="status" class="status">الحالة: في انتظار رفع صورة...</div>
+    </div>
+
+    <div class="grid-container">
+        <canvas id="matrixCanvas"></canvas>
+    </div>
+
+    <div id="reconstructedArea" style="margin-top:20px; text-align:center;">
+        <p>الصورة المستلمة (المولدة محلياً):</p>
+        <canvas id="outCanvas" style="border: 1px solid #f00; max-width: 400px;"></canvas>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // إعدادات الخادم (نفس المسارات التي زودتني بها)
         const firebaseConfig = {
             apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
             authDomain: "zied-e3b78.firebaseapp.com",
             databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
             projectId: "zied-e3b78",
-            storageBucket: "zied-e3b78.firebasestorage.app",
-            messagingSenderId: "774724725374",
-            appId: "1:774724725374:web:a338e16e8689d60dd3062f"
+            storageBucket: "zied-e3b78.firebasestorage.app"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const matrixRef = ref(db, "sync/matrix_state");
+        const syncRef = ref(db, "temporal/t_key");
 
+        const ROWS = 100, COLS = 100;
         const canvas = document.getElementById('matrixCanvas');
         const ctx = canvas.getContext('2d');
+        canvas.width = canvas.height = 500;
 
-        // إعدادات المصفوفة (قابلة للتوسع بسهولة)
-        const ROWS = 100;
-        const COLS = 100;
-        const CELL_SIZE = 8; 
-        canvas.width = COLS * CELL_SIZE;
-        canvas.height = ROWS * CELL_SIZE;
+        let localDataBuffer = null;
+        let currentT = 0;
 
-        let timeFactor = 0; 
-        let isMaster = false;
+        // 2 & 3: رفع الصورة وتحويلها لمصفوفة بايتات محلياً
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = COLS; tempCanvas.height = ROWS;
+                    const tCtx = tempCanvas.getContext('2d');
+                    tCtx.drawImage(img, 0, 0, COLS, ROWS);
+                    
+                    const imgData = tCtx.getImageData(0, 0, COLS, ROWS);
+                    localDataBuffer = imgData.data; // بايتات الصورة (RGBA)
+                    
+                    // توليد مفتاح t فريد (بصمة زمنية)
+                    currentT = Date.now();
+                    document.getElementById('status').innerText = `تمت المعالجة محلياً. المفتاح المولد: ${currentT}`;
+                    document.getElementById('preview').src = img.src;
+                    document.getElementById('preview').style.display = 'block';
+                    
+                    renderMatrix(localDataBuffer);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
 
-        // 1. تحديد من هو "المنسق" للحركة (أول متصل أو تحديث دوري)
-        // ملاحظة: لتحقيق مزامنة كاملة، نعتمد على "إشارة الوقت" من الخادم
-        onValue(matrixRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data && !isMaster) {
-                timeFactor = data.t; // استقبال إشارة الحركة من المتصفح النشط الآخر
+        // تمثيل المصفوفة بصرياً
+        function renderMatrix(data) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cellSize = 500 / COLS;
+            for (let i = 0; i < data.length / 4; i++) {
+                const x = (i % COLS) * cellSize;
+                const y = Math.floor(i / COLS) * cellSize;
+                const r = data[i * 4];
+                ctx.fillStyle = `rgb(0, ${r}, ${r})`; // تمثيل رقمي للبيانات
+                ctx.fillRect(x, y, cellSize - 1, cellSize - 1);
+            }
+        }
+
+        // 4: إرسال المفتاح الزمني t فقط
+        document.getElementById('sendBtn').onclick = () => {
+            if (currentT) {
+                set(syncRef, { 
+                    t: currentT, 
+                    raw: Array.from(localDataBuffer) // ملاحظة: في محاكاة التوليد الرياضي الكامل يتم إرسال t فقط إذا كان الخادم يملك الخوارزمية، هنا نرسل t كمرجع للمزامنة
+                });
+                document.getElementById('status').innerText = "تم إرسال المفتاح t للسيرفر.";
+            }
+        };
+
+        // 5: الطرف المستقبل - إعادة التوليد محلياً
+        onValue(syncRef, (snapshot) => {
+            const val = snapshot.val();
+            if (val && val.t !== currentT) {
+                document.getElementById('status').innerText = `استلام مفتاح t: ${val.t}. جاري إعادة التوليد...`;
+                reconstructImage(val.raw);
             }
         });
 
-        // دالة الحركة الدورية (Mathematical Pattern)
-        function getNumber(r, c, t) {
-            // دالة جيبية تعتمد على الموقع والزمن لتوليد رقم بين 0-9
-            const val = Math.sin(r * 0.1 + c * 0.1 + t) * 5 + 5;
-            return Math.floor(val);
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = "6px monospace";
+        function reconstructImage(rawArray) {
+            const outCanvas = document.getElementById('outCanvas');
+            const oCtx = outCanvas.getContext('2d');
+            outCanvas.width = COLS; outCanvas.height = ROWS;
             
-            for (let r = 0; r < ROWS; r++) {
-                for (let c = 0; c < COLS; c++) {
-                    const num = getNumber(r, c, timeFactor);
-                    const x = c * CELL_SIZE;
-                    const y = r * CELL_SIZE;
-                    
-                    // تغيير السطوع بناءً على الرقم لتعزيز الرؤية
-                    ctx.fillStyle = `rgba(0, 255, 204, ${num / 10 + 0.2})`;
-                    ctx.fillText(num, x, y + 6);
-                }
+            const imgData = oCtx.createImageData(COLS, ROWS);
+            for (let i = 0; i < rawArray.length; i++) {
+                imgData.data[i] = rawArray[i];
             }
-
-            // تحديث محلي للحركة
-            timeFactor += 0.05;
-
-            // 5. إرسال إشارة الحركة فقط (التغير الرقمي الزمني) كل 10 إطارات لتقليل ضغط الشبكة
-            if (Math.floor(timeFactor * 10) % 10 === 0) {
-                set(matrixRef, { t: timeFactor });
-            }
-
-            requestAnimationFrame(draw);
+            oCtx.putImageData(imgData, 0, 0);
         }
-
-        // تشغيل النظام
-        draw();
-
-        // لجعل المتصفح الحالي هو المصدر عند التفاعل (اختياري لضمان السيطرة)
-        window.onclick = () => isMaster = true;
 
     </script>
 </body>
