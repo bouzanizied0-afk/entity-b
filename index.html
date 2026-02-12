@@ -1,64 +1,156 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
-<meta charset="UTF-8">
-<title>مصفوفة ديناميكية للصورة</title>
-<style>
-body { background: #000; color: #0f0; font-family: monospace; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-canvas { border: 1px solid #333; margin-top: 20px; }
-#status { margin-top: 10px; color: #888; }
-</style>
+    <meta charset="UTF-8">
+    <title>نظام المصفوفة المركزية المتزامن 100x100</title>
+    <style>
+        body { margin: 0; background: #020202; color: #00ff41; font-family: 'Courier New', monospace; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 1px solid #003300; box-shadow: 0 0 20px rgba(0, 255, 65, 0.2); background: #000; }
+        .status { position: absolute; top: 10px; left: 10px; font-size: 14px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; border: 1px solid #00ff41; }
+        #counterDisplay { font-size: 24px; font-weight: bold; color: #fff; text-shadow: 0 0 10px #00ff41; }
+    </style>
 </head>
 <body>
 
-<h2>رفع الصورة - توليد مصفوفة ديناميكية</h2>
-<input type="file" id="imageInput" accept="image/*">
-<div id="status">في انتظار الصورة...</div>
+<div class="status">
+    النظام: <span id="syncStatus">جاري الاتصال...</span><br>
+    العداد المركزي: <span id="counterDisplay">0</span><br>
+    حجم البيانات: 100x100 (10,000 خلية)
+</div>
+
 <canvas id="matrixCanvas"></canvas>
 
-<script>
-const canvas = document.getElementById('matrixCanvas');
-const ctx = canvas.getContext('2d');
-const status = document.getElementById('status');
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-document.getElementById('imageInput').addEventListener('change', async (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    if(file.size > 100*1024){ // أقل من 100 كيلوبايت
-        status.innerText = "الملف أكبر من 100KB. اختر صورة أصغر.";
-        return;
+    // إعدادات الخادم الأصلية كما طلبت
+    const firebaseConfig = {
+        apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
+        authDomain: "zied-e3b78.firebaseapp.com",
+        databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "zied-e3b78",
+        storageBucket: "zied-e3b78.firebasestorage.app",
+        messagingSenderId: "774724725374",
+        appId: "1:774724725374:web:a338e16e8689d60dd3062f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const matrixRef = ref(db, "sync/global_matrix");
+    const counterRef = ref(db, "sync/central_counter");
+
+    const ROWS = 100;
+    const COLS = 100;
+    const CELL_SIZE = 8;
+    const canvas = document.getElementById('matrixCanvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = COLS * CELL_SIZE;
+    canvas.height = ROWS * CELL_SIZE;
+
+    let localMatrix = [];
+    let centralCounter = 1;
+    let isMaster = false;
+
+    // 1. إنشاء المصفوفة الأولية محلياً (فقط للبدء)
+    function initLocalMatrix() {
+        let matrix = {};
+        for (let r = 0; r < ROWS; r++) {
+            matrix[r] = {};
+            for (let c = 0; c < COLS; c++) {
+                matrix[r][c] = Math.floor(Math.random() * 10);
+            }
+        }
+        return matrix;
     }
 
-    const reader = new FileReader();
-    reader.onload = function(evt){
-        const img = new Image();
-        img.onload = function(){
-            // ضبط المصفوفة حسب حجم الصورة
-            canvas.width = img.width;
-            canvas.height = img.height;
+    // 2. استقبال البيانات من الخادم (المزامنة الفورية)
+    onValue(matrixRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            localMatrix = data;
+            document.getElementById('syncStatus').innerText = "متزامن مع الخادم";
+        } else {
+            // إذا كان الخادم فارغاً، نقوم بتهيئته لأول مرة
+            if (!isMaster) {
+                const initialData = initLocalMatrix();
+                set(matrixRef, initialData);
+            }
+        }
+    });
 
-            // رسم الصورة على الكانفاس لالتقاط البايتات
-            ctx.drawImage(img,0,0,img.width,img.height);
-            const imgData = ctx.getImageData(0,0,img.width,img.height);
-            const data = imgData.data; // RGBA
+    onValue(counterRef, (snapshot) => {
+        const val = snapshot.val();
+        if (val !== null) {
+            centralCounter = val;
+            document.getElementById('counterDisplay').innerText = centralCounter;
+        }
+    });
 
-            // توليد مصفوفة رقمية ديناميكية
-            for(let y=0; y<img.height; y++){
-                for(let x=0; x<img.width; x++){
-                    const idx = (y*img.width + x) * 4;
-                    const value = data[idx]; // نأخذ قناة الأحمر كمثال
-                    // نعيد رسم خلية تمثل البايت
-                    ctx.fillStyle = `rgb(${value},${value},${value})`;
-                    ctx.fillRect(x,y,1,1);
+    // 3. منطق التحديث (Master Logic)
+    // نحدد متصفح واحد ليكون المسؤول عن تحديث العداد والمصفوفة عشوائياً
+    window.onclick = () => {
+        isMaster = !isMaster;
+        document.getElementById('syncStatus').innerText = isMaster ? "أنت المتحكم (Master)" : "وضع الاستقبال";
+    };
+
+    function updateServerData() {
+        if (!isMaster) return;
+
+        // تحديث العداد من 1 إلى 10
+        let nextCounter = (centralCounter % 10) + 1;
+        
+        // تحديث أجزاء من المصفوفة لتقليل استهلاك الشبكة (تحديث دوري حقيقي)
+        let updates = {};
+        for (let i = 0; i < 50; i++) { // نغير 50 خلية عشوائية في كل دورة
+            let r = Math.floor(Math.random() * ROWS);
+            let c = Math.floor(Math.random() * COLS);
+            updates[`${r}/${c}`] = Math.floor(Math.random() * 10);
+        }
+
+        update(counterRef, nextCounter);
+        update(matrixRef, updates);
+    }
+
+    // تحديث الخادم كل 500ms (للحفاظ على الأداء)
+    setInterval(updateServerData, 500);
+
+    // 4. الرسم على الـ Canvas
+    function draw() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)"; // تأثير تلاشي بسيط
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (localMatrix) {
+            ctx.font = "7px monospace";
+            for (let r = 0; r < ROWS; r++) {
+                if (!localMatrix[r]) continue;
+                for (let c = 0; c < COLS; c++) {
+                    const num = localMatrix[r][c];
+                    const x = c * CELL_SIZE;
+                    const y = r * CELL_SIZE;
+
+                    // تأثير التوهج بناءً على العداد والقيمة
+                    const brightness = (num / 10) * (centralCounter / 10);
+                    ctx.fillStyle = `rgba(0, 255, 65, ${brightness + 0.1})`;
+                    
+                    // إضافة توهج إضافي إذا كان الرقم يطابق العداد
+                    if (num === centralCounter) {
+                        ctx.shadowBlur = 5;
+                        ctx.shadowColor = "#00ff41";
+                        ctx.fillStyle = "#fff";
+                    } else {
+                        ctx.shadowBlur = 0;
+                    }
+
+                    ctx.fillText(num, x, y + 7);
                 }
             }
+        }
+        requestAnimationFrame(draw);
+    }
 
-            status.innerText = `تم توليد المصفوفة: ${img.width}x${img.height} بكسل`;
-        };
-        img.src = evt.target.result;
-    };
-    reader.readAsDataURL(file);
-});
+    draw();
 </script>
 
 </body>
