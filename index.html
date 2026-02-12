@@ -2,142 +2,98 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Sovereign Stream v6.0 | Atomic Chunks</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fflate/0.8.0/browser.js"></script>
+    <title>مصفوفة التزامن الدوري 100x100</title>
     <style>
-        :root { --neon: #00e5ff; --danger: #ff4444; --bg: #050505; }
-        body { background: var(--bg); color: #fff; font-family: monospace; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .engine-card { background: #111; border: 2px solid var(--neon); padding: 25px; border-radius: 15px; width: 100%; max-width: 500px; }
-        .status-box { background: #000; padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 13px; border-right: 4px solid var(--neon); }
-        .bar-container { background: #222; height: 12px; border-radius: 6px; margin: 10px 0; position: relative; overflow: hidden; }
-        .bar { height: 100%; background: var(--neon); width: 0%; transition: 0.2s; shadow: 0 0 10px var(--neon); }
-        .log-stream { height: 100px; overflow-y: auto; font-size: 11px; color: #666; background: #000; padding: 5px; }
-        .btn { background: var(--neon); color: #000; border: none; padding: 12px; width: 100%; font-weight: bold; cursor: pointer; }
-        /* العداد الجديد */
-        .heartbeat-monitor { margin-bottom: 15px; font-size: 18px; color: #ffca28; border: 1px dashed #ffca28; padding: 5px 20px; border-radius: 50px; }
+        body { margin: 0; background: #050505; color: #00ffcc; font-family: monospace; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 1px solid #333; }
+        .info { position: absolute; top: 10px; left: 10px; font-size: 12px; color: #555; }
     </style>
 </head>
 <body>
+    <div class="info">نظام المصفوفة: 100×100 | التزامن: فعال</div>
+    <canvas id="matrixCanvas"></canvas>
 
-<div class="heartbeat-monitor">نبض الخادم العابر: <span id="globalCounter">0</span></div>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-<div class="engine-card">
-    <h3 style="text-align: center; color: var(--neon);">نظام البث الذري v6.0</h3>
-    
-    <input type="file" id="fileInput">
-    
-    <div class="status-box">
-        <div>إرسال (تونس): <span id="sendProgress">0%</span></div>
-        <div class="bar-container"><div class="bar" id="sendBar"></div></div>
-        
-        <div style="margin-top: 15px;">استقبال (أمريكا): <span id="recvProgress">0%</span></div>
-        <div class="bar-container"><div class="bar" id="recvBar" style="background: #ffca28;"></div></div>
-    </div>
+        // إعدادات الخادم (نفس المسارات التي زودتني بها)
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
+            authDomain: "zied-e3b78.firebaseapp.com",
+            databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "zied-e3b78",
+            storageBucket: "zied-e3b78.firebasestorage.app",
+            messagingSenderId: "774724725374",
+            appId: "1:774724725374:web:a338e16e8689d60dd3062f"
+        };
 
-    <div class="log-stream" id="log">بانتظار الإشارة...</div>
-    <button id="finalBtn" class="btn" style="display:none; margin-top:10px;">تجسيد الملف المكتمل</button>
-</div>
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const matrixRef = ref(db, "sync/matrix_state");
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
-        authDomain: "zied-e3b78.firebaseapp.com",
-        databaseURL: "https://zied-e3b78-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "zied-e3b78"
-    };
+        // إعدادات المصفوفة (قابلة للتوسع بسهولة)
+        const ROWS = 100;
+        const COLS = 100;
+        const CELL_SIZE = 8; 
+        canvas.width = COLS * CELL_SIZE;
+        canvas.height = ROWS * CELL_SIZE;
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const CHUNK_SIZE = 1024 * 512; 
-    let sessionID = Math.random().toString(36).substring(7);
+        let timeFactor = 0; 
+        let isMaster = false;
 
-    // --- وظيفة العداد العالمي (الاختبار) ---
-    const counterRef = ref(db, 'system/globalTimer');
-    
-    // 1. الاستماع للعداد (للمتصفحين)
-    onValue(counterRef, (snapshot) => {
-        const val = snapshot.val() || 0;
-        document.getElementById('globalCounter').innerText = val;
-    });
+        // 1. تحديد من هو "المنسق" للحركة (أول متصل أو تحديث دوري)
+        // ملاحظة: لتحقيق مزامنة كاملة، نعتمد على "إشارة الوقت" من الخادم
+        onValue(matrixRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data && !isMaster) {
+                timeFactor = data.t; // استقبال إشارة الحركة من المتصفح النشط الآخر
+            }
+        });
 
-    // 2. تحديث العداد (متصفح واحد فقط يقوم بالمهمة لرفع الرقم)
-    setInterval(async () => {
-        const snap = await get(counterRef);
-        let current = snap.val() || 0;
-        let next = current >= 10 ? 1 : current + 1;
-        set(counterRef, next);
-    }, 2000); // تحديث كل ثانيتين
+        // دالة الحركة الدورية (Mathematical Pattern)
+        function getNumber(r, c, t) {
+            // دالة جيبية تعتمد على الموقع والزمن لتوليد رقم بين 0-9
+            const val = Math.sin(r * 0.1 + c * 0.1 + t) * 5 + 5;
+            return Math.floor(val);
+        }
 
-    function updateBar(id, percent) {
-        document.getElementById(id + 'Bar').style.width = percent + '%';
-        document.getElementById(id + 'Progress').innerText = Math.round(percent) + '%';
-    }
-
-    // --- الإرسال (تونس) ---
-    document.getElementById('fileInput').onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-        document.getElementById('log').innerText = `تم تقسيم الملف إلى ${totalChunks} قطعة جينية.`;
-
-        for (let i = 0; i < totalChunks; i++) {
-            const start = i * CHUNK_SIZE;
-            const end = Math.min(file.size, start + CHUNK_SIZE);
-            const chunk = file.slice(start, end);
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = "6px monospace";
             
-            const buffer = await chunk.arrayBuffer();
-            const compressed = fflate.zlibSync(new Uint8Array(buffer));
-            const base64 = btoa(String.fromCharCode.apply(null, compressed));
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const num = getNumber(r, c, timeFactor);
+                    const x = c * CELL_SIZE;
+                    const y = r * CELL_SIZE;
+                    
+                    // تغيير السطوع بناءً على الرقم لتعزيز الرؤية
+                    ctx.fillStyle = `rgba(0, 255, 204, ${num / 10 + 0.2})`;
+                    ctx.fillText(num, x, y + 6);
+                }
+            }
 
-            await set(ref(db, `stream/chunk`), {
-                data: base64,
-                index: i,
-                total: totalChunks,
-                name: file.name,
-                type: file.type,
-                sender: sessionID,
-                t: Date.now()
-            });
+            // تحديث محلي للحركة
+            timeFactor += 0.05;
 
-            updateBar('send', ((i + 1) / totalChunks) * 100);
+            // 5. إرسال إشارة الحركة فقط (التغير الرقمي الزمني) كل 10 إطارات لتقليل ضغط الشبكة
+            if (Math.floor(timeFactor * 10) % 10 === 0) {
+                set(matrixRef, { t: timeFactor });
+            }
+
+            requestAnimationFrame(draw);
         }
-    };
 
-    // --- الاستقبال (تونس/متصفح 2) ---
-    let assembly = [];
-    let lastIndex = -1;
+        // تشغيل النظام
+        draw();
 
-    onValue(ref(db, `stream/chunk`), async (snap) => {
-        const val = snap.val();
-        if (!val || val.sender === sessionID || val.index === lastIndex) return;
+        // لجعل المتصفح الحالي هو المصدر عند التفاعل (اختياري لضمان السيطرة)
+        window.onclick = () => isMaster = true;
 
-        lastIndex = val.index;
-        const raw = Uint8Array.from(atob(val.data), c => c.charCodeAt(0));
-        const decompressed = fflate.unzlibSync(raw);
-        
-        assembly[val.index] = decompressed;
-        updateBar('recv', ((val.index + 1) / val.total) * 100);
-
-        await remove(ref(db, `stream/chunk`));
-
-        if (assembly.filter(x => x).length === val.total) {
-            document.getElementById('log').innerText = "تم اكتمال التجسيد الذري!";
-            const btn = document.getElementById('finalBtn');
-            btn.style.display = "block";
-            btn.onclick = () => {
-                const blob = new Blob(assembly, { type: val.type });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = "RECONSTRUCTED_" + val.name;
-                a.click();
-            };
-        }
-    });
-</script>
+    </script>
 </body>
 </html>
