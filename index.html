@@ -2,27 +2,31 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>نظام المصفوفة المركزية الأفقية 100x100</title>
+    <title>نظام المصفوفة الحية المتزامن - 100x100</title>
     <style>
-        body { margin: 0; background: #000; color: #00ff41; font-family: monospace; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        canvas { border: 1px solid #003300; }
-        .info { position: absolute; top: 10px; left: 10px; font-size: 12px; background: rgba(0,20,0,0.8); padding: 8px; border: 1px solid #00ff41; pointer-events: none; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; }
+        canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; }
+        .panel { position: absolute; top: 10px; left: 10px; color: #00ff41; background: rgba(0, 20, 0, 0.8); padding: 10px; border: 1px solid #00ff41; font-size: 12px; pointer-events: none; }
+        .master-btn { position: absolute; bottom: 20px; right: 20px; background: #00ff41; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; border-radius: 5px; }
     </style>
 </head>
 <body>
 
-<div class="info">
-    الحالة: <span id="status">جاري المزامنة...</span><br>
-    العداد: <span id="syncCounter">0</span><br>
-    المصدر: <span id="sourceRole">مستقبل</span>
+<div class="panel">
+    النظام: <span id="status">جاري الاتصال...</span><br>
+    العداد المركزي: <span id="countDisplay">0</span><br>
+    الوضع: <span id="modeDisplay">مستقبل (Live)</span>
 </div>
+
+<button class="master-btn" onclick="activateMaster()">تفعيل وضع القائد (Master)</button>
 
 <canvas id="matrixCanvas"></canvas>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
+    // إعدادات Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
         authDomain: "zied-e3b78.firebaseapp.com",
@@ -35,8 +39,8 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const matrixRef = ref(db, "sync/matrix_state_horizontal");
-    const counterRef = ref(db, "sync/central_counter");
+    const matrixRef = ref(db, "live_matrix/data");
+    const counterRef = ref(db, "live_matrix/counter");
 
     const canvas = document.getElementById('matrixCanvas');
     const ctx = canvas.getContext('2d');
@@ -47,91 +51,90 @@
     canvas.width = COLS * CELL_SIZE;
     canvas.height = ROWS * CELL_SIZE;
 
-    let serverMatrix = []; // المصفوفة المستلمة من الخادم
-    let centralCounter = 0;
+    let localMatrixRows = []; 
+    let globalCounter = 0;
     let isMaster = false;
 
-    // --- 1. استقبال العداد المركزي ---
-    onValue(counterRef, (snapshot) => {
-        centralCounter = snapshot.val() || 0;
-        document.getElementById('syncCounter').innerText = centralCounter;
-    });
-
-    // --- 2. استقبال المصفوفة الكاملة (أفقياً) ---
+    // 1. استقبال البيانات من الخادم فوراً
     onValue(matrixRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-            // تحويل الكائن المستلم إلى مصفوفة صفوف نصية
-            serverMatrix = Object.values(data);
-            document.getElementById('status').innerText = "متصل - بيانات حقيقية";
+            localMatrixRows = Object.values(data);
+            document.getElementById('status').innerText = "متزامن (حقيقي)";
         }
     });
 
-    // --- 3. وظيفة القائد (تحديث الخادم) ---
-    window.onclick = () => {
+    onValue(counterRef, (snapshot) => {
+        globalCounter = snapshot.val() || 0;
+        document.getElementById('countDisplay').innerText = globalCounter;
+    });
+
+    // 2. تفعيل وضع القائد (الذي يغير الأرقام للجميع)
+    window.activateMaster = () => {
         isMaster = true;
-        document.getElementById('sourceRole').innerText = "قائد (تحديث نشط)";
+        document.getElementById('modeDisplay').innerText = "قائد (Master)";
+        alert("أنت الآن المتحكم في المصفوفة لجميع المستخدمين.");
     };
 
-    function updateServer() {
+    // 3. تحديث الخادم (يتم فقط إذا كنت القائد)
+    function updateServerMatrix() {
         if (!isMaster) return;
 
-        let newCounter = (centralCounter % 10) + 1;
-        let fullData = {};
-
+        let nextCounter = (globalCounter % 10) + 1;
+        let updates = {};
+        
         for (let r = 0; r < ROWS; r++) {
-            let rowStr = "";
+            let rowString = "";
             for (let c = 0; c < COLS; c++) {
-                // توليد الرقم بناءً على دالة جيبية دورية
-                const val = Math.floor(Math.abs(Math.sin(r * 0.1 + c * 0.1 + (newCounter * 0.5)) * 10));
-                rowStr += val.toString();
+                // توليد رقم بناءً على العداد وموقع الخلية (حركة دورية)
+                const val = Math.floor(Math.abs(Math.sin(r * 0.1 + c * 0.1 + (nextCounter * 0.5)) * 10));
+                rowString += val;
             }
-            fullData[`row_${r}`] = rowStr; // تخزين الصف كـ String أفقي
+            updates[`r${r}`] = rowString; // إرسال صف كامل كنص خفيف
         }
 
-        set(counterRef, newCounter);
-        set(matrixRef, fullData);
+        set(counterRef, nextCounter);
+        set(matrixRef, updates);
     }
 
-    // تحديث الخادم بمعدل ثابت (كل 500ms) لضمان الاستقرار
-    setInterval(updateServer, 500);
+    // سرعة التحديث (كل 300 مللي ثانية لضمان السلاسة الفائقة)
+    setInterval(updateServerMatrix, 300);
 
-    // --- 4. الرسم (يعتمد كلياً على serverMatrix) ---
-    function draw() {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; 
+    // 4. محرك الرسم (يرسم فقط ما هو موجود في الخادم)
+    function render() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.3)"; // تأثير التلاشي للتحرك السلس
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        if (serverMatrix.length > 0) {
-            ctx.font = "7px monospace";
-            
-            for (let r = 0; r < ROWS; r++) {
-                const rowStr = serverMatrix[r];
-                if (!rowStr) continue;
+        ctx.font = "7px monospace";
+        
+        for (let r = 0; r < ROWS; r++) {
+            const rowContent = localMatrixRows[r];
+            if (!rowContent) continue;
 
-                for (let c = 0; c < COLS; c++) {
-                    const num = rowStr[c]; // قراءة الرقم من السلسلة النصية الأفقية
-                    const x = c * CELL_SIZE;
-                    const y = r * CELL_SIZE;
+            for (let c = 0; c < COLS; c++) {
+                const char = rowContent[c];
+                const x = c * CELL_SIZE;
+                const y = r * CELL_SIZE;
 
-                    // التوهج بناءً على العداد وقيمة الخلية المستلمة
-                    const valInt = parseInt(num);
-                    if (valInt === centralCounter) {
-                        ctx.fillStyle = "#ffffff";
-                        ctx.shadowBlur = 8;
-                        ctx.shadowColor = "#00ff41";
-                    } else {
-                        ctx.fillStyle = `rgba(0, 255, 65, ${valInt / 10 + 0.1})`;
-                        ctx.shadowBlur = 0;
-                    }
+                const val = parseInt(char);
 
-                    ctx.fillText(num, x, y + 7);
+                // تأثير التوهج الأخضر بناءً على القيمة والعداد
+                if (val === globalCounter) {
+                    ctx.fillStyle = "#ffffff"; // توهج أبيض للأرقام المتطابقة مع العداد
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = "#00ff41";
+                } else {
+                    ctx.fillStyle = `rgba(0, 255, 65, ${val / 10 + 0.1})`;
+                    ctx.shadowBlur = 0;
                 }
+
+                ctx.fillText(char, x, y + 7);
             }
         }
-        requestAnimationFrame(draw);
+        requestAnimationFrame(render);
     }
 
-    draw();
+    render();
 </script>
 
 </body>
