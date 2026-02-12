@@ -2,28 +2,23 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>نظام المصفوفة الحية - الربط الاحترافي</title>
+    <title>بوابة المصفوفة العالمية - Full HD Ready</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
-        canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; background: #000; }
-        .controls { position: absolute; top: 10px; background: rgba(0, 20, 0, 0.9); padding: 15px; border: 1px solid #00ff41; display: flex; gap: 10px; align-items: center; z-index: 100; }
-        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #fff; }
-        button:disabled { background: #004400; color: #00ff41; cursor: not-allowed; }
-        .info { position: absolute; bottom: 10px; left: 10px; font-size: 12px; }
-        #progressContainer { width: 200px; height: 10px; border: 1px solid #00ff41; display: none; background: #000; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #00ff41; transition: width 0.1s; }
+        canvas { background: #000; image-rendering: pixelated; } /* للحفاظ على حدة الصورة عند التكبير */
+        .controls { position: absolute; top: 10px; background: rgba(0, 10, 0, 0.85); padding: 10px; border: 1px solid #00ff41; display: flex; gap: 10px; z-index: 100; font-size: 12px; }
+        button { background: #00ff41; color: #000; border: none; padding: 5px 10px; cursor: pointer; font-weight: bold; }
+        .info { position: absolute; bottom: 10px; left: 10px; font-size: 11px; background: rgba(0,0,0,0.7); }
     </style>
 </head>
 <body>
 
 <div class="controls">
     <input type="file" id="imageInput" accept="image/*">
-    <button id="deconstructBtn">تفكيك</button>
-    <div id="progressContainer"><div id="progressBar"></div></div>
-    <button id="sendBtn" disabled>بث عبر الأنبوب</button>
-    <button id="masterBtn">وضع التلقائي</button>
+    <button id="deconstructBtn">تفكيك (HD)</button>
+    <button id="sendBtn" disabled>بث البوابة</button>
+    <span id="resDisplay">الدقة: 0x0</span>
 </div>
 
 <div class="info">
@@ -33,110 +28,77 @@
 <canvas id="matrixCanvas"></canvas>
 
 <script type="module">
-    // استيراد الدوال من ملفك المنفصل كما هي دون أي تعديل فيه
-    import { extractMatrix, compressRow, encryptRow, decompressRow, decryptRow } from './matrixEngine.js';
+    import { extractMatrix } from './matrixEngine.js';
 
-    // إعداد الأنبوب السريع (نفس الرابط الناجح)
     const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
-    const socket = io(SERVER_URL, { transports: ["websocket", "polling"] });
+    const socket = io(SERVER_URL, { transports: ["websocket"] });
 
     const canvas = document.getElementById('matrixCanvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const ROWS = 100; const COLS = 100; const CELL_SIZE = 7;
-    canvas.width = COLS * CELL_SIZE; canvas.height = ROWS * CELL_SIZE;
+    const ctx = canvas.getContext('2d', { alpha: false });
 
-    let liveMatrix = Array.from({length: 100}, () => Array(100).fill(0));
+    let liveMatrix = [];
     let localProcessedMatrix = null;
-    let globalCounter = 0;
-    let isMaster = false;
+    let ROWS = 0; let COLS = 0;
+    let CELL_SIZE = 2; // حجم أصغر للدقة العالية
 
-    // --- استقبال البيانات وفك تشفيرها باستخدام دوال المحرك ---
+    socket.on("connect", () => {
+        document.getElementById('status').innerText = "✅ متصل بالبوابة";
+    });
+
+    // --- الاستقبال الذكي المرن ---
     socket.on("matrix-relay", (data) => {
-        if (data.payload) {
-            Object.entries(data.payload).forEach(([y, compressed]) => {
-                // استخدام دوال المحرك المستوردة لفك التشفير (Key=7)
-                const decrypted = decryptRow(decompressRow(compressed), 7);
-                liveMatrix[Number(y)] = decrypted;
-            });
-            document.getElementById('status').innerText = "تم استلام بث مشفر";
+        if (data.matrix) {
+            // إذا تغيرت أبعاد البيانات القادمة، نغير حجم المسرح فوراً
+            if (data.matrix.length !== ROWS || data.matrix[0].length !== COLS) {
+                ROWS = data.matrix.length;
+                COLS = data.matrix[0].length;
+                canvas.width = COLS * CELL_SIZE;
+                canvas.height = ROWS * CELL_SIZE;
+                document.getElementById('resDisplay').innerText = `الدقة: ${COLS}x${ROWS}`;
+            }
+            liveMatrix = data.matrix;
         }
         if (data.counter !== undefined) {
-            globalCounter = data.counter;
-            document.getElementById('countDisplay').innerText = globalCounter;
+            document.getElementById('countDisplay').innerText = data.counter;
         }
     });
 
-    socket.on("connect", () => { document.getElementById('status').innerText = "متصل بالأنبوب"; });
-
-    // --- 1. التفكيك (يستخدم محركك مباشرة) ---
     document.getElementById('deconstructBtn').onclick = async () => {
         const file = document.getElementById('imageInput').files[0];
-        if (!file) return alert("اختر صورة أولاً");
-
-        document.getElementById('status').innerText = "جاري التفكيك...";
-        document.getElementById('progressContainer').style.display = "block";
-        document.getElementById('progressBar').style.width = "50%"; // محاكاة حركية
+        if (!file) return;
 
         const img = new Image();
         img.onload = () => {
-            // استخدام دالة المحرك المستوردة
-            localProcessedMatrix = extractMatrix(img, 100, 100, 16);
-            document.getElementById('progressBar').style.width = "100%";
-            
-            setTimeout(() => {
-                document.getElementById('progressContainer').style.display = "none";
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('status').innerText = "تم التفكيك بنجاح";
-                liveMatrix = [...localProcessedMatrix];
-            }, 300);
+            // هنا نحدد الدقة: يمكنك رفع الـ 100 إلى 500 أو أكثر للتجربة
+            // لكن لنبدأ بـ 200 لتجربة سلاسة "المعدات البسيطة"
+            const TARGET_RES = 200; 
+            localProcessedMatrix = extractMatrix(img, TARGET_RES, TARGET_RES, 16);
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('status').innerText = "تم التفكيك بدقة عالية";
+            liveMatrix = [...localProcessedMatrix];
         };
         img.src = URL.createObjectURL(file);
     };
 
-    // --- 2. الإرسال (تجهيز البيانات بنفس منطق المحرك ولكن عبر الأنبوب) ---
     document.getElementById('sendBtn').onclick = () => {
-        if (!localProcessedMatrix) return;
-        
-        const packedData = {};
-        localProcessedMatrix.forEach((row, y) => {
-            // استخدام دوال المحرك (التشفير والضغط) قبل الإرسال
-            const encrypted = encryptRow(row, 7);
-            const compressed = compressRow(encrypted);
-            packedData[y] = compressed;
-        });
-
-        socket.emit("matrix-relay", { payload: packedData, counter: globalCounter });
-        document.getElementById('status').innerText = "تم البث بنجاح";
+        if (localProcessedMatrix) {
+            socket.emit("matrix-relay", { matrix: localProcessedMatrix });
+        }
     };
 
-    // وضع التلقائي
-    document.getElementById('masterBtn').onclick = () => {
-        isMaster = !isMaster;
-        document.getElementById('status').innerText = isMaster ? "بث تلقائي نشط" : "توقف البث";
-    };
-
-    setInterval(() => {
-        if (!isMaster) return;
-        globalCounter = (globalCounter % 15) + 1;
-        document.getElementById('countDisplay').innerText = globalCounter;
-        socket.emit("matrix-relay", { counter: globalCounter });
-    }, 300);
-
-    // --- الرسم ---
     function render() {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+        ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (let r = 0; r < ROWS; r++) {
-            const row = liveMatrix[r];
-            for (let c = 0; c < COLS; c++) {
-                const val = row[c];
-                const x = c * CELL_SIZE; const y = r * CELL_SIZE;
-                if (val === globalCounter && val !== 0) {
-                    ctx.fillStyle = "#fff";
-                } else {
-                    ctx.fillStyle = `rgba(0, 255, 65, ${val / 16 + 0.1})`;
+
+        if (liveMatrix.length > 0) {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const val = liveMatrix[r][c];
+                    if (val > 0) {
+                        ctx.fillStyle = `rgba(0, 255, 65, ${val / 16})`;
+                        ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
                 }
-                ctx.fillText(val.toString(16).toUpperCase(), x, y + 6);
             }
         }
         requestAnimationFrame(render);
