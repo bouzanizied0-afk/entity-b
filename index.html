@@ -2,58 +2,78 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>إختبار الأنبوب السريع</title>
+    <title>إختبار الأنبوب السريع - نسخة التصحيح</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { background: #000; color: #00ff41; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         #counter { font-size: 100px; margin: 20px; text-shadow: 0 0 20px #00ff41; }
-        button { padding: 20px 40px; font-size: 20px; background: #00ff41; border: none; cursor: pointer; font-weight: bold; }
-        .status { margin-bottom: 20px; font-size: 14px; }
+        button { padding: 20px 40px; font-size: 20px; background: #00ff41; border: none; cursor: pointer; font-weight: bold; border-radius: 10px; }
+        .status { margin-bottom: 20px; font-size: 16px; font-weight: bold; padding: 10px; border: 1px solid #00ff41; }
+        .log { font-size: 10px; color: #888; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="status" id="status">جاري الاتصال بالخادم...</div>
+    <div class="status" id="status">محاولة اختراق الحواجز والاتصال...</div>
     <div id="counter">0</div>
     <button id="addBtn">إضافة +1</button>
+    <div class="log" id="log">السجل: جاهز للاختبار</div>
 
     <script>
-        // رابط خادمك في Replit
-        const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev/";
+        // الرابط الخاص بك (تأكد أنه بدون / في النهاية)
+        const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
         
-        const socket = io(SERVER_URL, { transports: ["websocket"] });
-        let count = 0;
-
-        const statusDiv = document.getElementById('status');
-        const counterDiv = document.getElementById('counter');
-        const addBtn = document.getElementById('addBtn');
-
-        // عند الاتصال
-        socket.on("connect", () => {
-            statusDiv.innerText = "✅ متصل بالخادم: " + socket.id;
-            statusDiv.style.color = "#00ff41";
+        // إعدادات اتصال هجومية (لتجاوز أخطاء CORS و 404)
+        const socket = io(SERVER_URL, { 
+            transports: ["websocket", "polling"], // محاولة التبديل بين البروتوكولات تلقائياً
+            forceNew: true,
+            reconnectionAttempts: 10,
+            timeout: 10000
         });
 
-        // عند استقبال "نبضة" من الأنبوب
+        let count = 0;
+        const statusDiv = document.getElementById('status');
+        const counterDiv = document.getElementById('counter');
+        const logDiv = document.getElementById('log');
+
+        function addLog(msg) {
+            logDiv.innerText = "آخر نشاط: " + msg;
+            console.log(msg);
+        }
+
+        socket.on("connect", () => {
+            statusDiv.innerText = "✅ متصل تماماً بالأنبوب (ID: " + socket.id + ")";
+            statusDiv.style.color = "#00ff41";
+            statusDiv.style.borderColor = "#00ff41";
+            addLog("تم الاتصال بنجاح");
+        });
+
         socket.on("matrix-relay", (data) => {
+            addLog("وصلت بيانات من جهاز آخر");
             if(data.testCounter !== undefined) {
                 count = data.testCounter;
                 counterDiv.innerText = count;
-                console.log("استلمت تحديث من جهاز آخر:", count);
             }
         });
 
-        // عند الضغط على الزر (إرسال للجميع)
-        addBtn.onclick = () => {
+        document.getElementById('addBtn').onclick = () => {
             count++;
             counterDiv.innerText = count;
-            // نرسل القيمة الجديدة عبر الأنبوب
+            // الإرسال مع التأكد من وصول الرسالة
             socket.emit("matrix-relay", { testCounter: count });
+            addLog("أرسلت الرقم: " + count);
         };
 
         socket.on("connect_error", (err) => {
-            statusDiv.innerText = "❌ فشل الاتصال: تأكد أن Replit يعمل (Run)";
-            statusDiv.style.color = "red";
+            statusDiv.innerText = "❌ محاولة اتصال فاشلة... جاري إعادة المحاولة";
+            statusDiv.style.color = "#ff4141";
+            statusDiv.style.borderColor = "#ff4141";
+            addLog("خطأ: " + err.message);
+        });
+
+        socket.on("disconnect", () => {
+            statusDiv.innerText = "⚠️ انقطع الاتصال";
+            addLog("فقدنا الاتصال بالسيرفر");
         });
     </script>
 </body>
