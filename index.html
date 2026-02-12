@@ -2,79 +2,155 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>إختبار الأنبوب السريع - نسخة التصحيح</title>
+    <title>نظام المصفوفة الحية - الأنبوب السريع</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { background: #000; color: #00ff41; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
-        #counter { font-size: 100px; margin: 20px; text-shadow: 0 0 20px #00ff41; }
-        button { padding: 20px 40px; font-size: 20px; background: #00ff41; border: none; cursor: pointer; font-weight: bold; border-radius: 10px; }
-        .status { margin-bottom: 20px; font-size: 16px; font-weight: bold; padding: 10px; border: 1px solid #00ff41; }
-        .log { font-size: 10px; color: #888; margin-top: 10px; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
+        canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; background: #000; }
+        .controls { position: absolute; top: 10px; background: rgba(0, 20, 0, 0.9); padding: 15px; border: 1px solid #00ff41; display: flex; gap: 10px; align-items: center; z-index: 100; }
+        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #fff; }
+        button:disabled { background: #004400; color: #00ff41; cursor: not-allowed; }
+        input[type="file"] { font-size: 12px; }
+        .info { position: absolute; bottom: 10px; left: 10px; font-size: 12px; }
+        #progressContainer { width: 200px; height: 10px; border: 1px solid #00ff41; display: none; background: #000; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: #00ff41; transition: width 0.1s; }
     </style>
 </head>
 <body>
 
-    <div class="status" id="status">محاولة اختراق الحواجز والاتصال...</div>
-    <div id="counter">0</div>
-    <button id="addBtn">إضافة +1</button>
-    <div class="log" id="log">السجل: جاهز للاختبار</div>
+<div class="controls">
+    <input type="file" id="imageInput" accept="image/*">
+    <button id="deconstructBtn">تفكيك</button>
+    <div id="progressContainer"><div id="progressBar"></div></div>
+    <button id="sendBtn" disabled>بث حي للمصفوفة</button>
+    <button id="masterBtn">وضع التلقائي</button>
+</div>
 
-    <script>
-        // الرابط الخاص بك (تأكد أنه بدون / في النهاية)
-        const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
-        
-        // إعدادات اتصال هجومية (لتجاوز أخطاء CORS و 404)
-        const socket = io(SERVER_URL, { 
-            transports: ["websocket", "polling"], // محاولة التبديل بين البروتوكولات تلقائياً
-            forceNew: true,
-            reconnectionAttempts: 10,
-            timeout: 10000
-        });
+<div class="info">
+    الحالة: <span id="status">جاري الاتصال بالأنبوب...</span> | العداد: <span id="countDisplay">0</span>
+</div>
 
-        let count = 0;
-        const statusDiv = document.getElementById('status');
-        const counterDiv = document.getElementById('counter');
-        const logDiv = document.getElementById('log');
+<canvas id="matrixCanvas"></canvas>
 
-        function addLog(msg) {
-            logDiv.innerText = "آخر نشاط: " + msg;
-            console.log(msg);
+<script type="module">
+    import { extractMatrix } from './matrixEngine.js';
+
+    // --- الرابط الذي نجح في اختبار العداد ---
+    const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
+    
+    const socket = io(SERVER_URL, { 
+        transports: ["websocket", "polling"],
+        forceNew: true 
+    });
+
+    const canvas = document.getElementById('matrixCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ROWS = 100; const COLS = 100; const CELL_SIZE = 7;
+    canvas.width = COLS * CELL_SIZE; canvas.height = ROWS * CELL_SIZE;
+
+    let liveMatrix = Array.from({length: 100}, () => Array(100).fill(0));
+    let localProcessedMatrix = null;
+    let globalCounter = 0;
+    let isMaster = false;
+
+    // --- إدارة الاتصال والاستلام اللحظي ---
+    socket.on("connect", () => {
+        document.getElementById('status').innerText = "✅ متصل بالأنبوب السريع";
+    });
+
+    socket.on("matrix-relay", (data) => {
+        if (data.matrix) {
+            liveMatrix = data.matrix;
+            document.getElementById('status').innerText = "تم استلام مصفوفة حية";
         }
+        if (data.counter !== undefined) {
+            globalCounter = data.counter;
+            document.getElementById('countDisplay').innerText = globalCounter;
+        }
+    });
 
-        socket.on("connect", () => {
-            statusDiv.innerText = "✅ متصل تماماً بالأنبوب (ID: " + socket.id + ")";
-            statusDiv.style.color = "#00ff41";
-            statusDiv.style.borderColor = "#00ff41";
-            addLog("تم الاتصال بنجاح");
-        });
+    // --- 1. تفكيك الصورة ---
+    document.getElementById('deconstructBtn').onclick = async () => {
+        const file = document.getElementById('imageInput').files[0];
+        if (!file) return alert("اختر صورة أولاً");
 
-        socket.on("matrix-relay", (data) => {
-            addLog("وصلت بيانات من جهاز آخر");
-            if(data.testCounter !== undefined) {
-                count = data.testCounter;
-                counterDiv.innerText = count;
-            }
-        });
+        const status = document.getElementById('status');
+        const pContainer = document.getElementById('progressContainer');
+        const pBar = document.getElementById('progressBar');
 
-        document.getElementById('addBtn').onclick = () => {
-            count++;
-            counterDiv.innerText = count;
-            // الإرسال مع التأكد من وصول الرسالة
-            socket.emit("matrix-relay", { testCounter: count });
-            addLog("أرسلت الرقم: " + count);
+        status.innerText = "جاري التفكيك...";
+        pContainer.style.display = "block";
+        
+        const img = new Image();
+        img.onload = () => {
+            pBar.style.width = "100%";
+            // استخراج المصفوفة (scale=16)
+            localProcessedMatrix = extractMatrix(img, 100, 100, 16);
+            setTimeout(() => {
+                pContainer.style.display = "none";
+                document.getElementById('sendBtn').disabled = false;
+                status.innerText = "جاهز للبث السريع";
+                liveMatrix = [...localProcessedMatrix]; // عرضها محلياً فوراً
+            }, 300);
         };
+        img.src = URL.createObjectURL(file);
+    };
 
-        socket.on("connect_error", (err) => {
-            statusDiv.innerText = "❌ محاولة اتصال فاشلة... جاري إعادة المحاولة";
-            statusDiv.style.color = "#ff4141";
-            statusDiv.style.borderColor = "#ff4141";
-            addLog("خطأ: " + err.message);
+    // --- 2. الإرسال عبر الأنبوب (بث مباشر) ---
+    document.getElementById('sendBtn').onclick = () => {
+        if (!localProcessedMatrix) return;
+        document.getElementById('status').innerText = "جاري البث الفوري...";
+        
+        // إرسال البيانات كحزمة واحدة سريعة
+        socket.emit("matrix-relay", {
+            matrix: localProcessedMatrix,
+            counter: globalCounter
         });
+    };
 
-        socket.on("disconnect", () => {
-            statusDiv.innerText = "⚠️ انقطع الاتصال";
-            addLog("فقدنا الاتصال بالسيرفر");
-        });
-    </script>
+    // وضع التلقائي (التحكم في العداد)
+    document.getElementById('masterBtn').onclick = () => {
+        isMaster = !isMaster;
+        document.getElementById('status').innerText = isMaster ? "وضع البث النشط" : "توقف البث";
+    };
+
+    setInterval(() => {
+        if (!isMaster) return;
+        globalCounter = (globalCounter % 15) + 1;
+        document.getElementById('countDisplay').innerText = globalCounter;
+        
+        // بث تحديث العداد فقط لسرعة استجابة هائلة
+        socket.emit("matrix-relay", { counter: globalCounter });
+    }, 200); // سرعة تحديث 200ms (خمس مرات في الثانية)
+
+    // --- محرك الرسم الاحترافي ---
+    function render() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = "6px monospace";
+
+        for (let r = 0; r < ROWS; r++) {
+            const row = liveMatrix[r];
+            if (!row) continue;
+            for (let c = 0; c < COLS; c++) {
+                const val = row[c];
+                const char = val.toString(16).toUpperCase();
+                const x = c * CELL_SIZE; const y = r * CELL_SIZE;
+
+                if (val === globalCounter && val !== 0) {
+                    ctx.fillStyle = "#fff";
+                    ctx.shadowBlur = 8; ctx.shadowColor = "#00ff41";
+                } else {
+                    ctx.fillStyle = `rgba(0, 255, 65, ${val / 16 + 0.1})`;
+                    ctx.shadowBlur = 0;
+                }
+                ctx.fillText(char, x, y + 6);
+            }
+        }
+        requestAnimationFrame(render);
+    }
+    render();
+</script>
 </body>
 </html>
