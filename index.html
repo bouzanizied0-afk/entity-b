@@ -2,15 +2,16 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>بوابة المصفوفة العالمية - Ultra Dynamic</title>
+    <title>بوابة المصفوفة العالمية - Ultra Dynamic & Tunnel</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
         canvas { background: #000; image-rendering: pixelated; border: 1px solid #004400; box-shadow: 0 0 20px #00ff41; }
-        .controls { position: absolute; top: 10px; background: rgba(0, 10, 0, 0.9); padding: 12px; border: 1px solid #00ff41; display: flex; gap: 12px; z-index: 100; font-size: 13px; align-items: center; }
+        .controls { position: absolute; top: 10px; background: rgba(0, 10, 0, 0.9); padding: 12px; border: 1px solid #00ff41; display: flex; gap: 12px; z-index: 100; font-size: 13px; align-items: center; flex-wrap: wrap; justify-content: center; }
         button { background: #00ff41; color: #000; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         button:hover { background: #fff; }
         button:disabled { background: #003300; color: #00ff41; }
+        input[type="text"] { background: #000; color: #00ff41; border: 1px solid #00ff41; padding: 5px; outline: none; width: 180px; }
         #resDisplay { color: #fff; font-weight: bold; }
     </style>
 </head>
@@ -20,6 +21,11 @@
     <input type="file" id="imageInput" accept="image/*">
     <button id="deconstructBtn">تفكيك HD</button>
     <button id="sendBtn" disabled>بث عبر البوابة</button>
+    
+    <div style="border-left: 1px solid #004400; height: 25px; margin: 0 5px;"></div>
+    <input type="text" id="urlInput" placeholder="أدخل الرابط (google.com)">
+    <button id="tunnelBtn" style="background: #008f11; color: white;">فتح عبر النفق</button>
+    
     <span id="resDisplay">الأبعاد: 0x0</span>
 </div>
 
@@ -29,8 +35,8 @@
 
 <script type="module">
     import { extractMatrix } from './matrixEngine.js';
+    import { matrixTunnel } from './matrixTunnel.js'; // استيراد المحرك الجديد
 
-    // الرابط الخاص بسيرفرك
     const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
     const socket = io(SERVER_URL, { transports: ["websocket"] });
 
@@ -40,50 +46,59 @@
     let liveMatrix = [];
     let localProcessedMatrix = null;
     let ROWS = 0, COLS = 0;
-    let CELL_SIZE = 2; // حجم الخلية للوصول لدقة عالية دون إرهاق الشاشة
+    let CELL_SIZE = 2;
 
     socket.on("connect", () => {
         document.getElementById('status').innerText = "✅ متصل بالبوابة السريعة";
     });
 
-    // --- الاستقبال الذكي والتمدد التلقائي ---
+    // --- استقبال بيانات المصفوفة (سواء صورة أو نفق) ---
     socket.on("matrix-relay", (data) => {
         if (data.matrix) {
-            const newRows = data.matrix.length;
-            const newCols = data.matrix[0].length;
-
-            // إذا تغير حجم المصفوفة، نقوم بتغيير حجم الكانفاس فوراً
-            if (newRows !== ROWS || newCols !== COLS) {
-                ROWS = newRows;
-                COLS = newCols;
-                canvas.width = COLS * CELL_SIZE;
-                canvas.height = ROWS * CELL_SIZE;
-                document.getElementById('resDisplay').innerText = `الأبعاد: ${COLS}x${ROWS}`;
-            }
+            updateCanvasDimensions(data.matrix);
             liveMatrix = data.matrix;
+            if (data.fromTunnel) {
+                document.getElementById('status').innerText = "✅ تم جلب البيانات عبر النفق";
+            }
         }
     });
 
-    // --- عملية التفكيك بدقة متغيرة ---
+    // دالة لتحديث أبعاد الكانفاس تلقائياً
+    function updateCanvasDimensions(matrix) {
+        const newRows = matrix.length;
+        const newCols = matrix[0].length;
+        if (newRows !== ROWS || newCols !== COLS) {
+            ROWS = newRows;
+            COLS = newCols;
+            canvas.width = COLS * CELL_SIZE;
+            canvas.height = ROWS * CELL_SIZE;
+            document.getElementById('resDisplay').innerText = `الأبعاد: ${COLS}x${ROWS}`;
+        }
+    }
+
+    // --- التحكم في النفق (Tunnel Control) ---
+    document.getElementById('tunnelBtn').onclick = () => {
+        const url = document.getElementById('urlInput').value;
+        if (url) {
+            matrixTunnel.sendThroughTunnel(socket, url); // إرسال الطلب المهرب
+            document.getElementById('status').innerText = "📡 جاري تهريب الطلب إلى أمريكا...";
+        } else {
+            alert("يرجى إدخال رابط أولاً");
+        }
+    };
+
+    // --- عملية التفكيك الأصلية ---
     document.getElementById('deconstructBtn').onclick = async () => {
         const file = document.getElementById('imageInput').files[0];
         if (!file) return alert("اختر صورة أولاً");
 
         const img = new Image();
         img.onload = () => {
-            // تحدي الـ Full HD: ابدأ بـ 200 وإذا كان جهازك سريعاً جرب 500 أو 1000
             const QUALITY = 250; 
             localProcessedMatrix = extractMatrix(img, QUALITY, QUALITY, 16);
             document.getElementById('sendBtn').disabled = false;
             document.getElementById('status').innerText = "تم التفكيك - جاهز للبث";
-            
-            // عرض محلي فوري
-            if (localProcessedMatrix.length !== ROWS) {
-                ROWS = localProcessedMatrix.length;
-                COLS = localProcessedMatrix[0].length;
-                canvas.width = COLS * CELL_SIZE;
-                canvas.height = ROWS * CELL_SIZE;
-            }
+            updateCanvasDimensions(localProcessedMatrix);
             liveMatrix = [...localProcessedMatrix];
         };
         img.src = URL.createObjectURL(file);
@@ -96,9 +111,7 @@
         }
     };
 
-    // --- محرك الرسم فائق السرعة ---
     function render() {
-        // تنظيف الشاشة بلون أسود خفيف لخلق تأثير "التوهج"
         ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -107,7 +120,6 @@
                 for (let c = 0; c < COLS; c++) {
                     const val = liveMatrix[r][c];
                     if (val > 0) {
-                        // رسم بكسل مضيء
                         ctx.fillStyle = `rgb(0, ${val * 16}, 65)`;
                         ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
                     }
