@@ -2,31 +2,36 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>نظام المصفوفة الحية المتزامن - 100x100</title>
+    <title>نظام المصفوفة الحية - معالج الصور</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; }
-        canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; }
-        .panel { position: absolute; top: 10px; left: 10px; color: #00ff41; background: rgba(0, 20, 0, 0.8); padding: 10px; border: 1px solid #00ff41; font-size: 12px; pointer-events: none; }
-        .master-btn { position: absolute; bottom: 20px; right: 20px; background: #00ff41; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; border-radius: 5px; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
+        canvas { border: 1px solid #003300; box-shadow: 0 0 15px #00ff41; background: #000; }
+        .controls { position: absolute; top: 10px; background: rgba(0, 20, 0, 0.9); padding: 15px; border: 1px solid #00ff41; display: flex; gap: 10px; align-items: center; z-index: 100; }
+        button { background: #00ff41; color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #004400; color: #00ff41; }
+        input[type="file"] { font-size: 12px; }
+        .info { position: absolute; bottom: 10px; left: 10px; font-size: 12px; }
     </style>
 </head>
 <body>
 
-<div class="panel">
-    النظام: <span id="status">جاري الاتصال...</span><br>
-    العداد المركزي: <span id="countDisplay">0</span><br>
-    الوضع: <span id="modeDisplay">مستقبل (Live)</span>
+<div class="controls">
+    <input type="file" id="imageInput" accept="image/*">
+    <button id="deconstructBtn">تفكيك</button>
+    <button id="sendBtn" disabled>إرسال إلى الخادم</button>
+    <button id="masterBtn">وضع التلقائي</button>
 </div>
 
-<button class="master-btn" onclick="activateMaster()">تفعيل وضع القائد (Master)</button>
+<div class="info">
+    الحالة: <span id="status">جاهز</span> | العداد: <span id="countDisplay">0</span>
+</div>
 
 <canvas id="matrixCanvas"></canvas>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    // إعدادات Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyC_oqjbxC27qLhH6mx_ngg4WCZUrMW2B7U",
         authDomain: "zied-e3b78.firebaseapp.com",
@@ -43,99 +48,103 @@
     const counterRef = ref(db, "live_matrix/counter");
 
     const canvas = document.getElementById('matrixCanvas');
-    const ctx = canvas.getContext('2d');
-    const ROWS = 100;
-    const COLS = 100;
-    const CELL_SIZE = 8;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ROWS = 100; const COLS = 100; const CELL_SIZE = 7;
+    canvas.width = COLS * CELL_SIZE; canvas.height = ROWS * CELL_SIZE;
 
-    canvas.width = COLS * CELL_SIZE;
-    canvas.height = ROWS * CELL_SIZE;
-
-    let localMatrixRows = []; 
+    let localMatrixRows = [];
+    let processedMatrix = []; // لحفظ مصفوفة الصورة المفككة
     let globalCounter = 0;
     let isMaster = false;
 
-    // 1. استقبال البيانات من الخادم فوراً
+    // استقبال البيانات
     onValue(matrixRef, (snapshot) => {
         const data = snapshot.val();
-        if (data) {
-            localMatrixRows = Object.values(data);
-            document.getElementById('status').innerText = "متزامن (حقيقي)";
-        }
+        if (data) localMatrixRows = Object.values(data);
     });
-
     onValue(counterRef, (snapshot) => {
         globalCounter = snapshot.val() || 0;
         document.getElementById('countDisplay').innerText = globalCounter;
     });
 
-    // 2. تفعيل وضع القائد (الذي يغير الأرقام للجميع)
-    window.activateMaster = () => {
-        isMaster = true;
-        document.getElementById('modeDisplay').innerText = "قائد (Master)";
-        alert("أنت الآن المتحكم في المصفوفة لجميع المستخدمين.");
+    // 1. زر التفكيك: تحويل الصورة إلى مصفوفة أرقام
+    document.getElementById('deconstructBtn').onclick = () => {
+        const file = document.getElementById('imageInput').files[0];
+        if (!file) return alert("اختر صورة أولاً");
+
+        const img = new Image();
+        img.onload = () => {
+            const tempCanvas = document.createElement('canvas');
+            const tCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = 100; tempCanvas.height = 100;
+            tCtx.drawImage(img, 0, 0, 100, 100);
+            const imgData = tCtx.getImageData(0, 0, 100, 100).data;
+
+            processedMatrix = [];
+            for (let y = 0; y < 100; y++) {
+                let rowStr = "";
+                for (let x = 0; x < 100; x++) {
+                    const idx = (y * 100 + x) * 4;
+                    const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
+                    rowStr += Math.floor(brightness / 26); // تحويل السطوع لرقم 0-9
+                }
+                processedMatrix.push(rowStr);
+            }
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('status').innerText = "تم التفكيك بنجاح";
+        };
+        img.src = URL.createObjectURL(file);
     };
 
-    // 3. تحديث الخادم (يتم فقط إذا كنت القائد)
-    function updateServerMatrix() {
-        if (!isMaster) return;
-
-        let nextCounter = (globalCounter % 10) + 1;
-        let updates = {};
-        
-        for (let r = 0; r < ROWS; r++) {
-            let rowString = "";
-            for (let c = 0; c < COLS; c++) {
-                // توليد رقم بناءً على العداد وموقع الخلية (حركة دورية)
-                const val = Math.floor(Math.abs(Math.sin(r * 0.1 + c * 0.1 + (nextCounter * 0.5)) * 10));
-                rowString += val;
-            }
-            updates[`r${r}`] = rowString; // إرسال صف كامل كنص خفيف
+    // 2. زر الإرسال: دفع مصفوفة الصورة إلى Firebase
+    document.getElementById('sendBtn').onclick = () => {
+        if (processedMatrix.length === 100) {
+            const updates = {};
+            processedMatrix.forEach((row, i) => updates[`r${i}`] = row);
+            set(matrixRef, updates);
+            document.getElementById('status').innerText = "تم الإرسال لجميع المتصفحات";
         }
+    };
 
+    // الوضع التلقائي (Master)
+    document.getElementById('masterBtn').onclick = () => {
+        isMaster = !isMaster;
+        document.getElementById('status').innerText = isMaster ? "وضع التلقائي نشط" : "توقف التلقائي";
+    };
+
+    // تحديث دوري (فقط إذا كان Master نشط)
+    setInterval(() => {
+        if (!isMaster) return;
+        let nextCounter = (globalCounter % 10) + 1;
         set(counterRef, nextCounter);
-        set(matrixRef, updates);
-    }
+    }, 500);
 
-    // سرعة التحديث (كل 300 مللي ثانية لضمان السلاسة الفائقة)
-    setInterval(updateServerMatrix, 300);
-
-    // 4. محرك الرسم (يرسم فقط ما هو موجود في الخادم)
     function render() {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.3)"; // تأثير التلاشي للتحرك السلس
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = "6px monospace";
 
-        ctx.font = "7px monospace";
-        
         for (let r = 0; r < ROWS; r++) {
             const rowContent = localMatrixRows[r];
             if (!rowContent) continue;
-
             for (let c = 0; c < COLS; c++) {
                 const char = rowContent[c];
-                const x = c * CELL_SIZE;
-                const y = r * CELL_SIZE;
-
                 const val = parseInt(char);
+                const x = c * CELL_SIZE; const y = r * CELL_SIZE;
 
-                // تأثير التوهج الأخضر بناءً على القيمة والعداد
                 if (val === globalCounter) {
-                    ctx.fillStyle = "#ffffff"; // توهج أبيض للأرقام المتطابقة مع العداد
-                    ctx.shadowBlur = 10;
-                    ctx.shadowColor = "#00ff41";
+                    ctx.fillStyle = "#fff";
+                    ctx.shadowBlur = 5; ctx.shadowColor = "#00ff41";
                 } else {
                     ctx.fillStyle = `rgba(0, 255, 65, ${val / 10 + 0.1})`;
                     ctx.shadowBlur = 0;
                 }
-
-                ctx.fillText(char, x, y + 7);
+                ctx.fillText(char, x, y + 6);
             }
         }
         requestAnimationFrame(render);
     }
-
     render();
 </script>
-
 </body>
 </html>
