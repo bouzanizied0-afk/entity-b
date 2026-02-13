@@ -2,134 +2,129 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>بوابة المصفوفة العالمية - Ultra Dynamic V2</title>
+    <title>النقل الآني للمصفوفة | Quantum Stream V3</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: monospace; color: #00ff41; }
-        canvas { background: #000; image-rendering: pixelated; border: 1px solid #004400; box-shadow: 0 0 20px #00ff41; }
-        .controls { position: absolute; top: 10px; background: rgba(0, 10, 0, 0.9); padding: 12px; border: 1px solid #00ff41; display: flex; gap: 12px; z-index: 100; font-size: 13px; align-items: center; }
-        button { background: #00ff41; color: #000; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { background: #fff; }
-        button:disabled { background: #003300; color: #00ff41; }
-        #resDisplay { color: #fff; font-weight: bold; }
-        /* شريط تقدم مدمج */
-        #progressContainer { width: 100px; height: 5px; border: 1px solid #00ff41; display: none; }
-        #progressBar { width: 0%; height: 100%; background: #00ff41; }
+        body { margin: 0; background: #000; overflow: hidden; color: #00ff41; font-family: 'Courier New', monospace; }
+        canvas { display: block; filter: contrast(1.2) brightness(1.2); }
+        .ui-overlay { position: absolute; top: 10px; left: 10px; background: rgba(0,20,0,0.8); padding: 15px; border: 1px solid #00ff41; z-index: 10; pointer-events: auto; }
+        .status-bar { position: absolute; bottom: 10px; left: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+        button { background: #00ff41; color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; }
+        input[type="file"] { display: none; }
+        label { background: #004400; color: #00ff41; padding: 10px 20px; border: 1px solid #00ff41; cursor: pointer; margin-right: 10px; }
+        .latency-meter { color: #fff; font-size: 10px; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-<div class="controls">
+<div class="ui-overlay">
+    <label for="imageInput">📂 اختر المصدر الذري</label>
     <input type="file" id="imageInput" accept="image/*">
-    <button id="deconstructBtn">تفكيك HD</button>
-    <div id="progressContainer"><div id="progressBar"></div></div>
-    <button id="sendBtn" disabled>بث عبر البوابة</button>
-    <span id="resDisplay">الأبعاد: 0x0</span>
+    <button id="igniteBtn">⚡ إطلاق النبضة (IGNITE)</button>
+    <div id="stats" class="latency-meter">الحالة: خامل | السرعة: 0ms</div>
 </div>
 
-<div id="status" style="position: absolute; bottom: 10px; right: 10px; font-size: 12px;">جاري الاتصال بالأنبوب...</div>
+<div class="status-bar" id="status">النظام جاهز للاختراق الرقمي...</div>
+<canvas id="teleportCanvas"></canvas>
 
-<canvas id="matrixCanvas"></canvas>
-
-<script type="module">
-    import { extractMatrix } from './matrixEngine.js';
-
+<script>
     const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
-    const socket = io(SERVER_URL, { transports: ["websocket"] });
-
-    const canvas = document.getElementById('matrixCanvas');
-    const ctx = canvas.getContext('2d', { alpha: false });
-
-    let liveMatrix = [];
-    let localProcessedMatrix = null;
-    let ROWS = 0, COLS = 0;
-    let CELL_SIZE = 2; 
-
-    socket.on("connect", () => {
-        document.getElementById('status').innerText = "✅ متصل بالبوابة السريعة";
+    const socket = io(SERVER_URL, { 
+        transports: ["websocket"], 
+        upgrade: false,
+        persist: false 
     });
 
+    const canvas = document.getElementById('teleportCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    
+    let ROWS = 250, COLS = 250;
+    const CELL_SIZE = window.innerHeight / ROWS;
+    canvas.width = COLS * CELL_SIZE;
+    canvas.height = window.innerHeight;
+
+    // ذاكرة العرض (الفيديو رام البرمجية)
+    const videoRAM = new Uint8Array(ROWS * COLS);
+
+    // --- استقبال النبضات (الطرف المستلم) ---
     socket.on("matrix-relay", (data) => {
-        if (data.matrix) {
-            const newRows = data.matrix.length;
-            const newCols = data.matrix[0].length;
-            if (newRows !== ROWS || newCols !== COLS) {
-                ROWS = newRows; COLS = newCols;
-                canvas.width = COLS * CELL_SIZE; canvas.height = ROWS * CELL_SIZE;
-                document.getElementById('resDisplay').innerText = `الأبعاد: ${COLS}x${ROWS}`;
-            }
-            // دمج البيانات المستلمة: إذا كانت جزئية لا تمسح القديم بل تملأه
-            if (data.isPartial && liveMatrix.length === newRows) {
-                data.matrix.forEach((row, i) => {
-                    if (row.some(v => v > 0)) liveMatrix[i] = row;
-                });
-            } else {
-                liveMatrix = data.matrix;
-            }
+        if (data.isAtomic && data.payload) {
+            const rowData = new Uint8Array(data.payload);
+            const startIdx = data.r * COLS;
+            videoRAM.set(rowData, startIdx);
         }
     });
 
-    document.getElementById('deconstructBtn').onclick = async () => {
-        const file = document.getElementById('imageInput').files[0];
-        if (!file) return alert("اختر صورة أولاً");
-        
-        document.getElementById('progressContainer').style.display = "block";
-        document.getElementById('progressBar').style.width = "50%";
-
-        const img = new Image();
-        img.onload = () => {
-            const QUALITY = 250; 
-            localProcessedMatrix = extractMatrix(img, QUALITY, QUALITY, 16);
-            document.getElementById('sendBtn').disabled = false;
-            document.getElementById('progressBar').style.width = "100%";
-            setTimeout(() => { document.getElementById('progressContainer').style.display = "none"; }, 500);
-            
-            ROWS = localProcessedMatrix.length;
-            COLS = localProcessedMatrix[0].length;
-            canvas.width = COLS * CELL_SIZE;
-            canvas.height = ROWS * CELL_SIZE;
-            liveMatrix = [...localProcessedMatrix];
-            document.getElementById('status').innerText = "تم التفكيك - جاهز للبث";
-        };
-        img.src = URL.createObjectURL(file);
-    };
-
-    // --- الإرسال التدريجي المبتكر (فكرتك) ---
-    document.getElementById('sendBtn').onclick = () => {
-        if (localProcessedMatrix) {
-            document.getElementById('status').innerText = "جاري البث التدريجي...";
-            
-            // الموجة 1: إرسال الملامح (الأسطر الزوجية فقط)
-            const skeleton = localProcessedMatrix.map((row, i) => i % 2 === 0 ? row : new Array(COLS).fill(0));
-            socket.emit("matrix-relay", { matrix: skeleton, isPartial: true });
-
-            // الموجة 2: إرسال التفاصيل (بعد 300 مللي ثانية)
-            setTimeout(() => {
-                socket.emit("matrix-relay", { matrix: localProcessedMatrix, isPartial: false });
-                document.getElementById('status').innerText = "تم البث بالكامل ✅";
-            }, 300);
-        }
-    };
-
+    // --- المحرك الرسومي (الرسم بسرعة 60 إطار/ثانية) ---
     function render() {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+        // تأثير التلاشي السريع (Motion Blur)
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        if (liveMatrix.length > 0) {
-            for (let r = 0; r < ROWS; r++) {
-                for (let c = 0; c < COLS; c++) {
-                    const val = liveMatrix[r][c];
-                    if (val > 0) {
-                        // استخدام نظام الألوان السداسية من النسخة البدائية لكن برسم البكسل الاحترافي
-                        ctx.fillStyle = `rgb(0, ${val * 15.9}, 65)`;
-                        ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-                    }
-                }
+        for (let i = 0; i < videoRAM.length; i++) {
+            const val = videoRAM[i];
+            if (val > 0) {
+                const r = Math.floor(i / COLS);
+                const c = i % COLS;
+                
+                // هندسة اللون اللحظي
+                ctx.fillStyle = `rgb(0, ${val * 16}, ${val * 4})`;
+                ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - 0.5, CELL_SIZE - 0.5);
             }
         }
         requestAnimationFrame(render);
     }
     render();
+
+    // --- بروتوكول الإشعاع (الطرف المرسل) ---
+    document.getElementById('igniteBtn').onclick = () => {
+        const file = document.getElementById('imageInput').files[0];
+        if (!file) return alert("قم بتغذية النظام بصورة أولاً!");
+
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        
+        img.onload = () => {
+            const start = performance.now();
+            document.getElementById('status').innerText = "🚀 تجري الآن عملية النقل التزامني...";
+            
+            // إنشاء معالج ذري غير مرئي
+            const processor = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+            processor.canvas.width = COLS;
+            processor.canvas.height = ROWS;
+            processor.drawImage(img, 0, 0, COLS, ROWS);
+
+            // البث السطري الفوري (Row-by-Row Atomic Streaming)
+            for (let r = 0; r < ROWS; r++) {
+                const imgData = processor.getImageData(0, r, COLS, 1).data;
+                const rowBuffer = new Uint8Array(COLS);
+
+                for (let c = 0; c < COLS; c++) {
+                    const idx = c * 4;
+                    // تحويل السطوع فوراً (Greyscale Optimization)
+                    rowBuffer[c] = (imgData[idx] * 0.299 + imgData[idx+1] * 0.587 + imgData[idx+2] * 0.114) / 16;
+                }
+
+                // قذف البيانات إلى الأنبوب الرقمي فوراً
+                socket.emit("matrix-relay", {
+                    r: r,
+                    payload: rowBuffer.buffer, // إرسال ArrayBuffer خام لسرعة البرق
+                    isAtomic: true
+                });
+            }
+
+            const end = performance.now();
+            document.getElementById('stats').innerText = `زمن المعالجة: ${(end - start).toFixed(2)}ms | الدقة: 250x250`;
+            document.getElementById('status').innerText = "✅ اكتمل النقل الآني بنجاح";
+        };
+    };
+
+    // مزامنة أبعاد الشاشة
+    window.onresize = () => {
+        canvas.width = COLS * (window.innerHeight / ROWS);
+        canvas.height = window.innerHeight;
+    };
 </script>
+
 </body>
 </html>
