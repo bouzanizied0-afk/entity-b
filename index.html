@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>بوابة المصفوفة V6 | محرك الترميم الذكي</title>
+    <title>بوابة المصفوفة V6.1 | محرك الاستدعاء الذاتي</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; color: #00ff41; }
@@ -45,15 +45,17 @@
     canvas.width = COLS * CELL_SIZE;
     canvas.height = ROWS * CELL_SIZE;
 
-    // ذاكرة المصفوفة الحية
     let liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
-    let receivedRows = new Set(); // لتتبع ما وصل فعلياً
+    let receivedRows = new Set();
+    let auditTimer; // تايمر الجرد
+    let processor; // تعريف المعالج بشكل عام ليكون متاحاً لإعادة الإرسال
 
     socket.on("connect", () => {
         document.getElementById('led').classList.add('online');
         document.getElementById('connStatus').innerText = "البوابة نشطة";
     });
 
+    // --- استقبال مدمج مع نظام الجرد ---
     socket.on("matrix-relay", (data) => {
         if (data.isAtomic && data.payload) {
             const r = data.r;
@@ -61,17 +63,48 @@
             liveMatrix[r] = payload;
             receivedRows.add(r);
 
-            // خوارزمية الترميم اللحظي: إذا كان الصف السابق مفقوداً، نملؤه ببيانات الصف الحالي مؤقتاً
             if (r > 0 && !receivedRows.has(r - 1)) {
                 liveMatrix[r - 1] = new Uint8Array(payload); 
             }
+
+            // تصفير عداد الجرد مع كل نبضة واصلة
+            clearTimeout(auditTimer);
+            auditTimer = setTimeout(auditAndRequestGaps, 1500);
         }
     });
+
+    // --- مستمع طلبات إعادة الاستدعاء (عند المرسل) ---
+    socket.on("request-reconciliation", (data) => {
+        if (data.gaps && data.gaps.length > 0 && processor) {
+            document.getElementById('stats').innerText = `🔄 ترميم ${data.gaps.length} صف مفقود...`;
+            data.gaps.forEach(r => {
+                const imgData = processor.getImageData(0, r, COLS, 1).data;
+                const rowBuffer = new Uint8Array(COLS);
+                for (let c = 0; c < COLS; c++) {
+                    const idx = c << 2;
+                    const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
+                    rowBuffer[c] = (brightness | 0) >> 4;
+                }
+                socket.emit("matrix-relay", { r: r, payload: Array.from(rowBuffer), isAtomic: true });
+            });
+        }
+    });
+
+    function auditAndRequestGaps() {
+        let missingRows = [];
+        for (let i = 0; i < ROWS; i++) {
+            if (!receivedRows.has(i)) missingRows.push(i);
+        }
+        if (missingRows.length > 0) {
+            socket.emit("request-reconciliation", { gaps: missingRows });
+        } else if (receivedRows.size > 0) {
+            document.getElementById('stats').innerText = "✅ المصفوفة مكتملة 100%";
+        }
+    }
 
     function render() {
         ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         for (let r = 0; r < ROWS; r++) {
             const row = liveMatrix[r];
             for (let c = 0; c < COLS; c++) {
@@ -93,7 +126,8 @@
         const img = new Image();
         img.src = URL.createObjectURL(file);
         img.onload = () => {
-            const processor = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+            // استخدام المعالج العام
+            processor = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
             processor.canvas.width = COLS;
             processor.canvas.height = ROWS;
             processor.drawImage(img, 0, 0, COLS, ROWS);
@@ -101,11 +135,8 @@
             liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
             receivedRows.clear();
 
-            // تجهيز قائمة الصفوف لإرسالها بترتيب (هيكلي) وليس تسلسلي
             let sequence = [];
-            // 1. الأطراف والمنتصف أولاً (الهيكل العظمي)
             sequence.push(0, ROWS - 1, Math.floor(ROWS / 2));
-            // 2. البقية (لضمان وصول كل شيء)
             for (let i = 1; i < ROWS - 1; i++) {
                 if (i !== Math.floor(ROWS / 2)) sequence.push(i);
             }
@@ -113,36 +144,23 @@
             let index = 0;
             function burstStream() {
                 if (index >= sequence.length) {
-                    document.getElementById('stats').innerText = "✅ اكتمل البناء المرمم";
+                    document.getElementById('stats').innerText = "✅ إرسال السيل الأولي";
                     return;
                 }
-
                 const r = sequence[index];
                 const imgData = processor.getImageData(0, r, COLS, 1).data;
                 const rowBuffer = new Uint8Array(COLS);
-
                 for (let c = 0; c < COLS; c++) {
                     const idx = c << 2;
                     const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
                     rowBuffer[c] = (brightness | 0) >> 4;
                 }
-
-                socket.emit("matrix-relay", {
-                    r: r,
-                    payload: Array.from(rowBuffer),
-                    isAtomic: true
-                });
-
+                socket.emit("matrix-relay", { r: r, payload: Array.from(rowBuffer), isAtomic: true });
                 index++;
-                // قذف نبضي سريع جداً
-                if (index % 5 === 0) {
-                    requestAnimationFrame(burstStream);
-                } else {
-                    burstStream(); // إرسال دفعات سريعة قبل انتظار الفريم القادم
-                }
+                if (index % 5 === 0) requestAnimationFrame(burstStream);
+                else burstStream();
             }
-
-            document.getElementById('stats').innerText = "🚀 جاري البث الهيكلي المرمم...";
+            document.getElementById('stats').innerText = "🚀 جاري البث الهيكلي...";
             burstStream();
         };
     };
