@@ -2,24 +2,18 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>بوابة المصفوفة - النسخة المستقرة V4</title>
+    <title>بوابة المصفوفة V5 | محرك التدفق الذري</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; color: #00ff41; }
-        
-        canvas { border: 1px solid #003300; box-shadow: 0 0 20px #00ff41; background: #000; image-rendering: pixelated; }
-        
-        .main-ui { position: absolute; background: rgba(0, 15, 0, 0.9); padding: 25px; border: 2px solid #00ff41; display: flex; flex-direction: column; gap: 15px; align-items: center; z-index: 100; box-shadow: 0 0 30px rgba(0, 255, 65, 0.2); }
-        
-        .status-led { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: bold; }
-        .led { width: 12px; height: 12px; border-radius: 50%; background: #500; transition: 0.3s; }
+        canvas { border: 1px solid #003300; box-shadow: 0 0 30px rgba(0, 255, 65, 0.3); background: #000; image-rendering: pixelated; }
+        .main-ui { position: absolute; background: rgba(0, 10, 0, 0.85); padding: 20px; border: 1px solid #00ff41; display: flex; flex-direction: column; gap: 12px; align-items: center; z-index: 100; }
+        .status-led { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+        .led { width: 10px; height: 10px; border-radius: 50%; background: #300; }
         .led.online { background: #00ff41; box-shadow: 0 0 10px #00ff41; }
-
-        button { background: #00ff41; color: #000; border: none; padding: 12px 30px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; letter-spacing: 1px; }
-        button:hover { background: #fff; transform: scale(1.05); }
-        button:disabled { background: #003300; color: #00ff41; cursor: not-allowed; }
-        
-        label { background: #004400; color: #00ff41; padding: 10px 20px; border: 1px dashed #00ff41; cursor: pointer; }
+        button { background: #00ff41; color: #000; border: none; padding: 10px 25px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }
+        button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
+        label { color: #00ff41; padding: 8px; border: 1px dashed #00ff41; cursor: pointer; font-size: 12px; }
         input[type="file"] { display: none; }
     </style>
 </head>
@@ -28,65 +22,53 @@
 <div class="main-ui">
     <div class="status-led">
         <div id="led" class="led"></div>
-        <span id="connStatus">اتصال مقطوع</span>
+        <span id="connStatus">النظام خامل</span>
     </div>
-
-    <label for="imageInput">📂 اختر المصدر الرقمي</label>
+    <label for="imageInput">📂 تلقيم المصدر</label>
     <input type="file" id="imageInput" accept="image/*">
-    
-    <button id="igniteBtn">⚡ إطلاق النقل الآني</button>
-    <div id="stats" style="font-size: 10px; opacity: 0.7;">الجهاز جاهز...</div>
+    <button id="igniteBtn">⚡ إطلاق السيل (STREAM)</button>
+    <div id="stats" style="font-size: 9px; color: #fff;">READY FOR ATOMIC TRANSFER</div>
 </div>
 
 <canvas id="matrixCanvas"></canvas>
 
 <script>
     const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
-    const socket = io(SERVER_URL, { transports: ["websocket"] });
+    const socket = io(SERVER_URL, { transports: ["websocket"], upgrade: false });
 
     const canvas = document.getElementById('matrixCanvas');
     const ctx = canvas.getContext('2d', { alpha: false });
     
-    let ROWS = 200, COLS = 200;
+    const ROWS = 200, COLS = 200;
     const CELL_SIZE = 3;
     canvas.width = COLS * CELL_SIZE;
     canvas.height = ROWS * CELL_SIZE;
 
     let liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
 
-    // --- تحديث حالة الاتصال ---
     socket.on("connect", () => {
         document.getElementById('led').classList.add('online');
-        document.getElementById('connStatus').innerText = "متصل بالبوابة";
+        document.getElementById('connStatus').innerText = "البوابة متصلة";
     });
 
-    socket.on("disconnect", () => {
-        document.getElementById('led').classList.remove('online');
-        document.getElementById('connStatus').innerText = "اتصال مقطوع";
-    });
-
-    // --- استقبال مصلح 100% ---
     socket.on("matrix-relay", (data) => {
-        // التحقق من وصول البيانات الذرية
         if (data.isAtomic && data.payload) {
-            const r = data.r;
-            // تحويل الـ Payload المستلم (سواء كان مصفوفة أو Buffer) إلى Uint8Array
-            const rowData = new Uint8Array(data.payload);
-            if (r < ROWS) {
-                liveMatrix[r] = rowData;
-            }
+            // استقبال فوري ووضع في الذاكرة الرامية (RAM) للمتصفح
+            liveMatrix[data.r] = new Uint8Array(data.payload);
         }
     });
 
+    // محرك الرندرة الاحترافي (60 FPS) مع تأثير التلاشي
     function render() {
         ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for (let r = 0; r < ROWS; r++) {
+            const row = liveMatrix[r];
             for (let c = 0; c < COLS; c++) {
-                const val = liveMatrix[r][c];
+                const val = row[c];
                 if (val > 0) {
-                    ctx.fillStyle = `rgb(0, ${val * 16}, 65)`;
+                    ctx.fillStyle = `rgb(0, ${val << 4}, 65)`; // استخدام Bitwise Shift للسرعة
                     ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - 0.5, CELL_SIZE - 0.5);
                 }
             }
@@ -95,37 +77,55 @@
     }
     render();
 
-    // --- زر واحد: فكك وأطلق فوراً ---
+    // --- نظام النبضات المتلاحقة (The Pipelining Logic) ---
     document.getElementById('igniteBtn').onclick = () => {
         const file = document.getElementById('imageInput').files[0];
-        if (!file) return alert("اختر صورة!");
+        if (!file) return;
 
         const img = new Image();
         img.src = URL.createObjectURL(file);
         img.onload = () => {
-            const start = performance.now();
-            const processor = document.createElement('canvas').getContext('2d');
+            const processor = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
             processor.canvas.width = COLS;
             processor.canvas.height = ROWS;
             processor.drawImage(img, 0, 0, COLS, ROWS);
 
-            for (let r = 0; r < ROWS; r++) {
-                const imgData = processor.getImageData(0, r, COLS, 1).data;
+            // تصفير المصفوفة المحلية قبل البدء بسيل جديد
+            liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
+
+            let currentRow = 0;
+
+            // وظيفة "القاذفة المتسلسلة" - ترسل الصف وتستدعي نفسها للصف التالي فوراً
+            function streamRow() {
+                if (currentRow >= ROWS) {
+                    document.getElementById('stats').innerText = "✅ اكتمل سيل البيانات";
+                    return;
+                }
+
+                const imgData = processor.getImageData(0, currentRow, COLS, 1).data;
                 const rowBuffer = new Uint8Array(COLS);
 
                 for (let c = 0; c < COLS; c++) {
-                    const idx = c * 4;
-                    rowBuffer[c] = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3 / 16;
+                    const idx = c << 2; // سرعة معالجة x4
+                    // تحويل لـ Integer صحيح (0-15) باستخدام Bitwise
+                    const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
+                    rowBuffer[c] = (brightness | 0) >> 4; 
                 }
 
-                // الإرسال المصلح: إضافة المفتاح المفقود والتأكد من الصيغة
+                // قذف النبضة للشبكة
                 socket.emit("matrix-relay", {
-                    r: r,
-                    payload: Array.from(rowBuffer), // إرسال كمصفوفة لضمان التوافق الشامل
+                    r: currentRow,
+                    payload: Array.from(rowBuffer),
                     isAtomic: true
                 });
+
+                currentRow++;
+                // استخدام requestAnimationFrame لربط الإرسال بنبض المعالج لضمان السلاسة
+                requestAnimationFrame(streamRow);
             }
-            document.getElementById('stats').innerText = `اكتمل النقل في: ${(performance.now() - start).toFixed(2)}ms`;
+
+            document.getElementById('stats').innerText = "⚡ جاري البث النبضي...";
+            streamRow(); // إطلاق أول رجل في الصف
         };
     };
 </script>
