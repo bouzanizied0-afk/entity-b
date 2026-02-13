@@ -90,11 +90,23 @@
     };
 
     document.getElementById('sendBtn').onclick = () => {
-        if (localProcessedMatrix) {
+    if (localProcessedMatrix) {
+        document.getElementById('status').innerText = "جاري البث التدريجي...";
+
+        // إرسال المرحلة الأولى: الملامح السريعة
+        const skeletonMatrix = localProcessedMatrix.map((row, idx) => 
+            idx % 2 === 0 ? row : new Array(row.length).fill(0)
+        );
+        socket.emit("matrix-relay", { matrix: skeletonMatrix });
+
+        // إرسال المرحلة الثانية: التفاصيل الكاملة بعد لحظة
+        setTimeout(() => {
             socket.emit("matrix-relay", { matrix: localProcessedMatrix });
-            document.getElementById('status').innerText = "يتم البث الآن...";
-        }
-    };
+            document.getElementById('status').innerText = "✅ اكتمل البث بنجاح";
+        }, 200); 
+    }
+};
+
 
     // --- محرك الرسم فائق السرعة ---
     function render() {
