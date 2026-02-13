@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>بوابة المصفوفة V5 | محرك التدفق الذري</title>
+    <title>بوابة المصفوفة V6 | محرك الترميم الذكي</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; color: #00ff41; }
@@ -13,8 +13,9 @@
         .led.online { background: #00ff41; box-shadow: 0 0 10px #00ff41; }
         button { background: #00ff41; color: #000; border: none; padding: 10px 25px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }
         button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
-        label { color: #00ff41; padding: 8px; border: 1px dashed #00ff41; cursor: pointer; font-size: 12px; }
+        #stats { font-size: 9px; color: #fff; margin-top: 5px; }
         input[type="file"] { display: none; }
+        label { color: #00ff41; padding: 8px; border: 1px dashed #00ff41; cursor: pointer; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -22,12 +23,12 @@
 <div class="main-ui">
     <div class="status-led">
         <div id="led" class="led"></div>
-        <span id="connStatus">النظام خامل</span>
+        <span id="connStatus">جهاز الاستقبال خامل</span>
     </div>
-    <label for="imageInput">📂 تلقيم المصدر</label>
+    <label for="imageInput">📂 تلقيم المصدر الذري</label>
     <input type="file" id="imageInput" accept="image/*">
-    <button id="igniteBtn">⚡ إطلاق السيل (STREAM)</button>
-    <div id="stats" style="font-size: 9px; color: #fff;">READY FOR ATOMIC TRANSFER</div>
+    <button id="igniteBtn">⚡ إطلاق السيل المرمم</button>
+    <div id="stats">READY FOR RECONSTRUCTION</div>
 </div>
 
 <canvas id="matrixCanvas"></canvas>
@@ -44,21 +45,29 @@
     canvas.width = COLS * CELL_SIZE;
     canvas.height = ROWS * CELL_SIZE;
 
+    // ذاكرة المصفوفة الحية
     let liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
+    let receivedRows = new Set(); // لتتبع ما وصل فعلياً
 
     socket.on("connect", () => {
         document.getElementById('led').classList.add('online');
-        document.getElementById('connStatus').innerText = "البوابة متصلة";
+        document.getElementById('connStatus').innerText = "البوابة نشطة";
     });
 
     socket.on("matrix-relay", (data) => {
         if (data.isAtomic && data.payload) {
-            // استقبال فوري ووضع في الذاكرة الرامية (RAM) للمتصفح
-            liveMatrix[data.r] = new Uint8Array(data.payload);
+            const r = data.r;
+            const payload = new Uint8Array(data.payload);
+            liveMatrix[r] = payload;
+            receivedRows.add(r);
+
+            // خوارزمية الترميم اللحظي: إذا كان الصف السابق مفقوداً، نملؤه ببيانات الصف الحالي مؤقتاً
+            if (r > 0 && !receivedRows.has(r - 1)) {
+                liveMatrix[r - 1] = new Uint8Array(payload); 
+            }
         }
     });
 
-    // محرك الرندرة الاحترافي (60 FPS) مع تأثير التلاشي
     function render() {
         ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -68,7 +77,7 @@
             for (let c = 0; c < COLS; c++) {
                 const val = row[c];
                 if (val > 0) {
-                    ctx.fillStyle = `rgb(0, ${val << 4}, 65)`; // استخدام Bitwise Shift للسرعة
+                    ctx.fillStyle = `rgb(0, ${val << 4}, 65)`;
                     ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - 0.5, CELL_SIZE - 0.5);
                 }
             }
@@ -77,7 +86,6 @@
     }
     render();
 
-    // --- نظام النبضات المتلاحقة (The Pipelining Logic) ---
     document.getElementById('igniteBtn').onclick = () => {
         const file = document.getElementById('imageInput').files[0];
         if (!file) return;
@@ -90,42 +98,52 @@
             processor.canvas.height = ROWS;
             processor.drawImage(img, 0, 0, COLS, ROWS);
 
-            // تصفير المصفوفة المحلية قبل البدء بسيل جديد
             liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
+            receivedRows.clear();
 
-            let currentRow = 0;
+            // تجهيز قائمة الصفوف لإرسالها بترتيب (هيكلي) وليس تسلسلي
+            let sequence = [];
+            // 1. الأطراف والمنتصف أولاً (الهيكل العظمي)
+            sequence.push(0, ROWS - 1, Math.floor(ROWS / 2));
+            // 2. البقية (لضمان وصول كل شيء)
+            for (let i = 1; i < ROWS - 1; i++) {
+                if (i !== Math.floor(ROWS / 2)) sequence.push(i);
+            }
 
-            // وظيفة "القاذفة المتسلسلة" - ترسل الصف وتستدعي نفسها للصف التالي فوراً
-            function streamRow() {
-                if (currentRow >= ROWS) {
-                    document.getElementById('stats').innerText = "✅ اكتمل سيل البيانات";
+            let index = 0;
+            function burstStream() {
+                if (index >= sequence.length) {
+                    document.getElementById('stats').innerText = "✅ اكتمل البناء المرمم";
                     return;
                 }
 
-                const imgData = processor.getImageData(0, currentRow, COLS, 1).data;
+                const r = sequence[index];
+                const imgData = processor.getImageData(0, r, COLS, 1).data;
                 const rowBuffer = new Uint8Array(COLS);
 
                 for (let c = 0; c < COLS; c++) {
-                    const idx = c << 2; // سرعة معالجة x4
-                    // تحويل لـ Integer صحيح (0-15) باستخدام Bitwise
+                    const idx = c << 2;
                     const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
-                    rowBuffer[c] = (brightness | 0) >> 4; 
+                    rowBuffer[c] = (brightness | 0) >> 4;
                 }
 
-                // قذف النبضة للشبكة
                 socket.emit("matrix-relay", {
-                    r: currentRow,
+                    r: r,
                     payload: Array.from(rowBuffer),
                     isAtomic: true
                 });
 
-                currentRow++;
-                // استخدام requestAnimationFrame لربط الإرسال بنبض المعالج لضمان السلاسة
-                requestAnimationFrame(streamRow);
+                index++;
+                // قذف نبضي سريع جداً
+                if (index % 5 === 0) {
+                    requestAnimationFrame(burstStream);
+                } else {
+                    burstStream(); // إرسال دفعات سريعة قبل انتظار الفريم القادم
+                }
             }
 
-            document.getElementById('stats').innerText = "⚡ جاري البث النبضي...";
-            streamRow(); // إطلاق أول رجل في الصف
+            document.getElementById('stats').innerText = "🚀 جاري البث الهيكلي المرمم...";
+            burstStream();
         };
     };
 </script>
