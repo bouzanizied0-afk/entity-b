@@ -120,18 +120,16 @@
             const totalPixels = imageWidth * imageHeight;
             await set(ref(db, `${rootPath}/m`), metadata);
 
-            // إرسال بيانات الصورة الأولية والإعدادات للعمال
-            Object.values(workers).forEach(w => {
-                w.postMessage({
-                    type: 'initImage',
-                    width: imageWidth,
-                    height: imageHeight,
-                    imageData: imageData.buffer // نقل Buffer بدلاً من النسخ
-                }, [imageData.buffer]);
-                // يجب إعادة إنشاء imageData buffer بعد النقل
-                // هذه طريقة مبسطة، في التطبيقات الحقيقية يجب نسخ البيانات أو إعادة تحميلها
-                imageData = ctx.getImageData(0,0,imageWidth,imageHeight).data; 
-            });
+// الكود المصحح: يرسل نسخة مستقلة لكل عامل دون قفل الذاكرة
+Object.values(workers).forEach(w => {
+    const copyBuffer = new Uint8ClampedArray(imageData).buffer;
+    w.postMessage({
+        type: 'initImage',
+        width: imageWidth,
+        height: imageHeight,
+        imageData: copyBuffer
+    }, [copyBuffer]);
+});
 
             // Firebase سترسل "أوامر" صغيرة جداً للعمال
             // كل "أمر" يوجه العمال لتوليد جزء من الصورة
