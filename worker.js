@@ -1,3 +1,4 @@
+انه في نفس المتصفح ولكن انا كمرسل عندما احاول رفع الصورة اضغط عليها فلا تظهر اجب فقط ولا تعدل
 // worker.js
 let offscreenCanvas = null;
 let ctx = null;
@@ -73,3 +74,4 @@ function drawBatch(startIndex, endIndex) {
     // يمكن إرسال رسالة "الرسم اكتمل" إذا أردنا
     // postMessage({ type: 'drawComplete', count: processedPixelsCount });
 }
+انظر في الملفين اين الخطا ولا تعدل
