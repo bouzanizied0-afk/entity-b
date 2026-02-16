@@ -1,169 +1,182 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>بوابة المصفوفة V6.1 | محرك الاستدعاء الذاتي</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <title>Quantum Synaptic Engine V19</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; color: #00ff41; }
-        canvas { border: 1px solid #003300; box-shadow: 0 0 30px rgba(0, 255, 65, 0.3); background: #000; image-rendering: pixelated; }
-        .main-ui { position: absolute; background: rgba(0, 10, 0, 0.85); padding: 20px; border: 1px solid #00ff41; display: flex; flex-direction: column; gap: 12px; align-items: center; z-index: 100; }
-        .status-led { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-        .led { width: 10px; height: 10px; border-radius: 50%; background: #300; }
-        .led.online { background: #00ff41; box-shadow: 0 0 10px #00ff41; }
-        button { background: #00ff41; color: #000; border: none; padding: 10px 25px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }
-        button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
-        #stats { font-size: 9px; color: #fff; margin-top: 5px; }
-        input[type="file"] { display: none; }
-        label { color: #00ff41; padding: 8px; border: 1px dashed #00ff41; cursor: pointer; font-size: 12px; }
+        :root { --neon: #0f0; --bg: #050505; --red: #ff4444; --green: #44ff44; --blue: #4444ff; --alpha: #ffffff; }
+        body { background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        
+        .engine-room { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; width: 90vw; }
+        .cylinder { border: 1px solid var(--neon); padding: 10px; text-align: center; background: rgba(0,255,0,0.05); }
+        .cylinder h4 { margin: 0 0 5px 0; font-size: 0.8rem; opacity: 0.7; }
+        .val { font-family: 'Digital-7', monospace; font-size: 1.2rem; }
+        .r { color: var(--red); border-color: var(--red); }
+        .g { color: var(--green); border-color: var(--green); }
+        .b { color: var(--blue); border-color: var(--blue); }
+        .a { color: var(--alpha); border-color: var(--alpha); }
+
+        .dashboard { text-align: center; margin-bottom: 20px; }
+        #perc { font-size: 3rem; font-weight: bold; color: #0ff; margin: 0; }
+        
+        #matrixCanvas { border: 2px solid var(--neon); background: #000; max-width: 80vw; max-height: 45vh; image-rendering: pixelated; }
+        
+        .controls { position: fixed; bottom: 20px; display: flex; gap: 10px; }
+        .btn { padding: 10px 20px; border: 1px solid var(--neon); background: transparent; color: var(--neon); cursor: pointer; font-size: 0.9rem; }
+        .btn:hover { background: var(--neon); color: #000; }
     </style>
 </head>
 <body>
 
-<div class="main-ui">
-    <div class="status-led">
-        <div id="led" class="led"></div>
-        <span id="connStatus">جهاز الاستقبال خامل</span>
+    <div class="engine-room">
+        <div class="cylinder r"><h4>RED_ENG</h4><div id="vR" class="val">000</div></div>
+        <div class="cylinder g"><h4>GRN_ENG</h4><div id="vG" class="val">000</div></div>
+        <div class="cylinder b"><h4>BLU_ENG</h4><div id="vB" class="val">000</div></div>
+        <div class="cylinder a"><h4>ALP_ENG</h4><div id="vA" class="val">255</div></div>
     </div>
-    <label for="imageInput">📂 تلقيم المصدر الذري</label>
-    <input type="file" id="imageInput" accept="image/*">
-    <button id="igniteBtn">⚡ إطلاق السيل المرمم</button>
-    <div id="stats">READY FOR RECONSTRUCTION</div>
-</div>
 
-<canvas id="matrixCanvas"></canvas>
+    <div class="dashboard">
+        <p id="perc">0%</p>
+        <div id="status">محرك المحور الشبكي V19: خامل</div>
+    </div>
 
-<script>
-    const SERVER_URL = "https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev";
-    const socket = io(SERVER_URL, { transports: ["websocket"], upgrade: false });
+    <canvas id="matrixCanvas"></canvas>
 
-    const canvas = document.getElementById('matrixCanvas');
-    const ctx = canvas.getContext('2d', { alpha: false });
-    
-    const ROWS = 200, COLS = 200;
-    const CELL_SIZE = 3;
-    canvas.width = COLS * CELL_SIZE;
-    canvas.height = ROWS * CELL_SIZE;
+    <div class="controls">
+        <label class="btn"> تغذية البيانات <input type="file" id="fileInput" hidden accept="image/*"> </label>
+        <button id="sendBtn" class="btn" style="border-color:#0ff; color:#0ff;">إشعال المحركات</button>
+        <button id="clearBtn" class="btn" style="border-color:red; color:red;">تطهير</button>
+    </div>
 
-    let liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
-    let receivedRows = new Set();
-    let auditTimer; // تايمر الجرد
-    let processor; // تعريف المعالج بشكل عام ليكون متاحاً لإعادة الإرسال
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    socket.on("connect", () => {
-        document.getElementById('led').classList.add('online');
-        document.getElementById('connStatus').innerText = "البوابة نشطة";
-    });
-
-    // --- استقبال مدمج مع نظام الجرد ---
-    socket.on("matrix-relay", (data) => {
-        if (data.isAtomic && data.payload) {
-            const r = data.r;
-            const payload = new Uint8Array(data.payload);
-            liveMatrix[r] = payload;
-            receivedRows.add(r);
-
-            if (r > 0 && !receivedRows.has(r - 1)) {
-                liveMatrix[r - 1] = new Uint8Array(payload); 
-            }
-
-            // تصفير عداد الجرد مع كل نبضة واصلة
-            clearTimeout(auditTimer);
-            auditTimer = setTimeout(auditAndRequestGaps, 1500);
-        }
-    });
-
-    // --- مستمع طلبات إعادة الاستدعاء (عند المرسل) ---
-    socket.on("request-reconciliation", (data) => {
-        if (data.gaps && data.gaps.length > 0 && processor) {
-            document.getElementById('stats').innerText = `🔄 ترميم ${data.gaps.length} صف مفقود...`;
-            data.gaps.forEach(r => {
-                const imgData = processor.getImageData(0, r, COLS, 1).data;
-                const rowBuffer = new Uint8Array(COLS);
-                for (let c = 0; c < COLS; c++) {
-                    const idx = c << 2;
-                    const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
-                    rowBuffer[c] = (brightness | 0) >> 4;
-                }
-                socket.emit("matrix-relay", { r: r, payload: Array.from(rowBuffer), isAtomic: true });
-            });
-        }
-    });
-
-    function auditAndRequestGaps() {
-        let missingRows = [];
-        for (let i = 0; i < ROWS; i++) {
-            if (!receivedRows.has(i)) missingRows.push(i);
-        }
-        if (missingRows.length > 0) {
-            socket.emit("request-reconciliation", { gaps: missingRows });
-        } else if (receivedRows.size > 0) {
-            document.getElementById('stats').innerText = "✅ المصفوفة مكتملة 100%";
-        }
-    }
-
-    function render() {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        for (let r = 0; r < ROWS; r++) {
-            const row = liveMatrix[r];
-            for (let c = 0; c < COLS; c++) {
-                const val = row[c];
-                if (val > 0) {
-                    ctx.fillStyle = `rgb(0, ${val << 4}, 65)`;
-                    ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - 0.5, CELL_SIZE - 0.5);
-                }
-            }
-        }
-        requestAnimationFrame(render);
-    }
-    render();
-
-    document.getElementById('igniteBtn').onclick = () => {
-        const file = document.getElementById('imageInput').files[0];
-        if (!file) return;
-
-        const img = new Image();
-        img.src = URL.createObjectURL(file);
-        img.onload = () => {
-            // استخدام المعالج العام
-            processor = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-            processor.canvas.width = COLS;
-            processor.canvas.height = ROWS;
-            processor.drawImage(img, 0, 0, COLS, ROWS);
-
-            liveMatrix = Array.from({length: ROWS}, () => new Uint8Array(COLS));
-            receivedRows.clear();
-
-            let sequence = [];
-            sequence.push(0, ROWS - 1, Math.floor(ROWS / 2));
-            for (let i = 1; i < ROWS - 1; i++) {
-                if (i !== Math.floor(ROWS / 2)) sequence.push(i);
-            }
-
-            let index = 0;
-            function burstStream() {
-                if (index >= sequence.length) {
-                    document.getElementById('stats').innerText = "✅ إرسال السيل الأولي";
-                    return;
-                }
-                const r = sequence[index];
-                const imgData = processor.getImageData(0, r, COLS, 1).data;
-                const rowBuffer = new Uint8Array(COLS);
-                for (let c = 0; c < COLS; c++) {
-                    const idx = c << 2;
-                    const brightness = (imgData[idx] + imgData[idx+1] + imgData[idx+2]) / 3;
-                    rowBuffer[c] = (brightness | 0) >> 4;
-                }
-                socket.emit("matrix-relay", { r: r, payload: Array.from(rowBuffer), isAtomic: true });
-                index++;
-                if (index % 5 === 0) requestAnimationFrame(burstStream);
-                else burstStream();
-            }
-            document.getElementById('stats').innerText = "🚀 جاري البث الهيكلي...";
-            burstStream();
+        const firebaseConfig = {
+            apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+            authDomain: "setouchi-it.firebaseapp.com",
+            databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "setouchi-it"
         };
-    };
-</script>
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const rootPath = 'quantum_v19_synaptic';
+
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        let imageData = null; // Uint8Array للبيانات الأولية
+        let metadata = null;
+        let imageWidth = 0;
+        let imageHeight = 0;
+
+        // --- Workers Setup ---
+        const workers = {
+            r: new Worker('./worker.js'),
+            g: new Worker('./worker.js'),
+            b: new Worker('./worker.js'),
+            a: new Worker('./worker.js')
+        };
+        const offscreenCanvas = canvas.transferControlToOffscreen();
+
+        // إرسال الـ OffscreenCanvas لكل Worker
+        Object.values(workers).forEach(w => w.postMessage({ type: 'initCanvas', canvas: offscreenCanvas }, [offscreenCanvas]));
+
+        // استقبال الرسائل من الـ Workers (لتحديث الواجهة)
+        Object.keys(workers).forEach(key => {
+            workers[key].onmessage = (e) => {
+                if (e.data.type === 'updateCounter') {
+                    document.getElementById(`v${key.toUpperCase()}`).innerText = e.data.value.toString().padStart(3, '0');
+                } else if (e.data.type === 'drawComplete') {
+                    // هنا يمكننا تحديث جزء من الشاشة أو طلب تحديث من Worker آخر
+                    // حالياً، الرسم يتم مباشرة من Worker للـ OffscreenCanvas
+                }
+            };
+        });
+        // --------------------
+
+        document.getElementById('fileInput').onchange = (e) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    imageWidth = img.width;
+                    imageHeight = img.height;
+                    canvas.width = imageWidth;
+                    canvas.height = imageHeight;
+                    ctx.drawImage(img, 0, 0);
+                    imageData = ctx.getImageData(0,0,imageWidth,imageHeight).data; // Uint8ClampedArray (RGBA)
+                    
+                    metadata = { w: imageWidth, h: imageHeight };
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('status').innerText = "تم تقسيم البيانات للعمال";
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        };
+
+        document.getElementById('sendBtn').onclick = async () => {
+            const totalPixels = imageWidth * imageHeight;
+            await set(ref(db, `${rootPath}/m`), metadata);
+
+            // إرسال بيانات الصورة الأولية والإعدادات للعمال
+            Object.values(workers).forEach(w => {
+                w.postMessage({
+                    type: 'initImage',
+                    width: imageWidth,
+                    height: imageHeight,
+                    imageData: imageData.buffer // نقل Buffer بدلاً من النسخ
+                }, [imageData.buffer]);
+                // يجب إعادة إنشاء imageData buffer بعد النقل
+                // هذه طريقة مبسطة، في التطبيقات الحقيقية يجب نسخ البيانات أو إعادة تحميلها
+                imageData = ctx.getImageData(0,0,imageWidth,imageHeight).data; 
+            });
+
+            // Firebase سترسل "أوامر" صغيرة جداً للعمال
+            // كل "أمر" يوجه العمال لتوليد جزء من الصورة
+            const batchSize = 100; // عدد الأوامر الصغيرة المرسلة لكل دفعة
+            for (let i = 0; i < totalPixels; i += batchSize) {
+                const p = Math.round((i / totalPixels) * 100);
+                
+                // هنا سنرسل "أمر توليد" بدلاً من البيانات الخام
+                // الأمر سيحتوي على مؤشرات للعمال (مثلاً: ابدأ التلوين من البكسل i إلى i + batchSize)
+                await update(ref(db, rootPath), {
+                    cmd: `GENERATE_BATCH:${i}:${Math.min(i + batchSize, totalPixels)}`,
+                    perc: p
+                });
+
+                document.getElementById('perc').innerText = p + "%";
+                await new Promise(r => setTimeout(r, 10)); // انتظار بسيط لإعطاء Firebase فرصة
+            }
+            document.getElementById('perc').innerText = "100%";
+        };
+
+        onValue(ref(db, rootPath), (snap) => {
+            const val = snap.val();
+            if (val && val.m) {
+                // تحديث بيانات الميتا في الواجهة الرئيسية
+                canvas.width = val.m.w;
+                canvas.height = val.m.h;
+                imageWidth = val.m.w;
+                imageHeight = val.m.h;
+            }
+
+            if (val && val.perc !== undefined) {
+                document.getElementById('perc').innerText = val.perc + "%";
+            }
+
+            if (val && val.cmd) {
+                // إرسال الأمر لجميع العمال ليقوموا بالرسم بشكل متوازي
+                Object.values(workers).forEach(w => w.postMessage({ type: 'command', cmd: val.cmd }));
+            }
+        });
+
+        document.getElementById('clearBtn').onclick = () => { 
+            remove(ref(db, rootPath)); 
+            Object.values(workers).forEach(w => w.postMessage({ type: 'clear' }));
+            location.reload(); 
+        };
+    </script>
 </body>
 </html>
