@@ -2,25 +2,19 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Quantum Synaptic Engine V19</title>
+    <title>Quantum Synaptic Engine V19 - Fixed</title>
     <style>
         :root { --neon: #0f0; --bg: #050505; --red: #ff4444; --green: #44ff44; --blue: #4444ff; --alpha: #ffffff; }
         body { background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        
         .engine-room { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; width: 90vw; }
         .cylinder { border: 1px solid var(--neon); padding: 10px; text-align: center; background: rgba(0,255,0,0.05); }
-        .cylinder h4 { margin: 0 0 5px 0; font-size: 0.8rem; opacity: 0.7; }
         .val { font-family: 'Digital-7', monospace; font-size: 1.2rem; }
         .r { color: var(--red); border-color: var(--red); }
         .g { color: var(--green); border-color: var(--green); }
         .b { color: var(--blue); border-color: var(--blue); }
         .a { color: var(--alpha); border-color: var(--alpha); }
-
-        .dashboard { text-align: center; margin-bottom: 20px; }
         #perc { font-size: 3rem; font-weight: bold; color: #0ff; margin: 0; }
-        
         #matrixCanvas { border: 2px solid var(--neon); background: #000; max-width: 80vw; max-height: 45vh; image-rendering: pixelated; }
-        
         .controls { position: fixed; bottom: 20px; display: flex; gap: 10px; }
         .btn { padding: 10px 20px; border: 1px solid var(--neon); background: transparent; color: var(--neon); cursor: pointer; font-size: 0.9rem; }
         .btn:hover { background: var(--neon); color: #000; }
@@ -37,7 +31,7 @@
 
     <div class="dashboard">
         <p id="perc">0%</p>
-        <div id="status">محرك المحور الشبكي V19: خامل</div>
+        <div id="status">النظام: جاهز للإقلاع</div>
     </div>
 
     <canvas id="matrixCanvas"></canvas>
@@ -45,7 +39,7 @@
     <div class="controls">
         <label class="btn"> تغذية البيانات <input type="file" id="fileInput" hidden accept="image/*"> </label>
         <button id="sendBtn" class="btn" style="border-color:#0ff; color:#0ff;">إشعال المحركات</button>
-        <button id="clearBtn" class="btn" style="border-color:red; color:red;">تطهير</button>
+        <button id="clearBtn" class="btn" style="border-color:red; color:red;">تدمير</button>
     </div>
 
     <script type="module">
@@ -64,11 +58,9 @@
         const rootPath = 'quantum_v19_synaptic';
 
         const canvas = document.getElementById('matrixCanvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
-        let imageData = null; // Uint8Array للبيانات الأولية
-        let metadata = null;
-        let imageWidth = 0;
-        let imageHeight = 0;
+        const ctx = canvas.getContext('2d');
+        let imageDataRaw = null;
+        let imageWidth = 0, imageHeight = 0;
 
         // --- Workers Setup ---
         const workers = {
@@ -77,39 +69,31 @@
             b: new Worker('./worker.js'),
             a: new Worker('./worker.js')
         };
-        const offscreenCanvas = canvas.transferControlToOffscreen();
 
-        // إرسال الـ OffscreenCanvas لكل Worker
-        Object.values(workers).forEach(w => w.postMessage({ type: 'initCanvas', canvas: offscreenCanvas }, [offscreenCanvas]));
-
-        // استقبال الرسائل من الـ Workers (لتحديث الواجهة)
+        // استقبال البيانات من العمال للرسم
         Object.keys(workers).forEach(key => {
             workers[key].onmessage = (e) => {
-                if (e.data.type === 'updateCounter') {
-                    document.getElementById(`v${key.toUpperCase()}`).innerText = e.data.value.toString().padStart(3, '0');
-                } else if (e.data.type === 'drawComplete') {
-                    // هنا يمكننا تحديث جزء من الشاشة أو طلب تحديث من Worker آخر
-                    // حالياً، الرسم يتم مباشرة من Worker للـ OffscreenCanvas
+                if (e.data.type === 'pixel') {
+                    // تحديث العدادات
+                    document.getElementById(`v${key.toUpperCase()}`).innerText = e.data.color.toString().padStart(3, '0');
+                    // الرسم الفوري على الكانفاس الرئيسي
+                    ctx.fillStyle = e.data.rgba;
+                    ctx.fillRect(e.data.x, e.data.y, 1, 1);
                 }
             };
         });
-        // --------------------
 
         document.getElementById('fileInput').onchange = (e) => {
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
                 img.onload = () => {
-                    imageWidth = img.width;
-                    imageHeight = img.height;
-                    canvas.width = imageWidth;
-                    canvas.height = imageHeight;
+                    imageWidth = img.width; imageHeight = img.height;
+                    canvas.width = imageWidth; canvas.height = imageHeight;
                     ctx.drawImage(img, 0, 0);
-                    imageData = ctx.getImageData(0,0,imageWidth,imageHeight).data; // Uint8ClampedArray (RGBA)
-                    
-                    metadata = { w: imageWidth, h: imageHeight };
+                    imageDataRaw = ctx.getImageData(0,0,imageWidth,imageHeight).data;
                     document.getElementById('sendBtn').disabled = false;
-                    document.getElementById('status').innerText = "تم تقسيم البيانات للعمال";
+                    document.getElementById('status').innerText = "تم حجز البكسلات";
                 };
                 img.src = ev.target.result;
             };
@@ -118,63 +102,36 @@
 
         document.getElementById('sendBtn').onclick = async () => {
             const totalPixels = imageWidth * imageHeight;
-            await set(ref(db, `${rootPath}/m`), metadata);
+            await set(ref(db, `${rootPath}/m`), {w: imageWidth, h: imageHeight});
 
-// الكود المصحح: يرسل نسخة مستقلة لكل عامل دون قفل الذاكرة
-Object.values(workers).forEach(w => {
-    const copyBuffer = new Uint8ClampedArray(imageData).buffer;
-    w.postMessage({
-        type: 'initImage',
-        width: imageWidth,
-        height: imageHeight,
-        imageData: copyBuffer
-    }, [copyBuffer]);
-});
+            // إعطاء كل عامل نسخة من البيانات
+            Object.values(workers).forEach(w => {
+                const copy = new Uint8ClampedArray(imageDataRaw);
+                w.postMessage({ type: 'initImage', width: imageWidth, height: imageHeight, imageData: copy.buffer }, [copy.buffer]);
+            });
 
-            // Firebase سترسل "أوامر" صغيرة جداً للعمال
-            // كل "أمر" يوجه العمال لتوليد جزء من الصورة
-            const batchSize = 100; // عدد الأوامر الصغيرة المرسلة لكل دفعة
+            const batchSize = 150;
             for (let i = 0; i < totalPixels; i += batchSize) {
                 const p = Math.round((i / totalPixels) * 100);
-                
-                // هنا سنرسل "أمر توليد" بدلاً من البيانات الخام
-                // الأمر سيحتوي على مؤشرات للعمال (مثلاً: ابدأ التلوين من البكسل i إلى i + batchSize)
                 await update(ref(db, rootPath), {
                     cmd: `GENERATE_BATCH:${i}:${Math.min(i + batchSize, totalPixels)}`,
                     perc: p
                 });
-
                 document.getElementById('perc').innerText = p + "%";
-                await new Promise(r => setTimeout(r, 10)); // انتظار بسيط لإعطاء Firebase فرصة
+                await new Promise(r => setTimeout(r, 5));
             }
-            document.getElementById('perc').innerText = "100%";
         };
 
         onValue(ref(db, rootPath), (snap) => {
             const val = snap.val();
-            if (val && val.m) {
-                // تحديث بيانات الميتا في الواجهة الرئيسية
-                canvas.width = val.m.w;
-                canvas.height = val.m.h;
-                imageWidth = val.m.w;
-                imageHeight = val.m.h;
-            }
-
-            if (val && val.perc !== undefined) {
-                document.getElementById('perc').innerText = val.perc + "%";
-            }
-
+            if (val && val.m) { canvas.width = val.m.w; canvas.height = val.m.h; imageWidth = val.m.w; imageHeight = val.m.h; }
+            if (val && val.perc) document.getElementById('perc').innerText = val.perc + "%";
             if (val && val.cmd) {
-                // إرسال الأمر لجميع العمال ليقوموا بالرسم بشكل متوازي
                 Object.values(workers).forEach(w => w.postMessage({ type: 'command', cmd: val.cmd }));
             }
         });
 
-        document.getElementById('clearBtn').onclick = () => { 
-            remove(ref(db, rootPath)); 
-            Object.values(workers).forEach(w => w.postMessage({ type: 'clear' }));
-            location.reload(); 
-        };
+        document.getElementById('clearBtn').onclick = () => { remove(ref(db, rootPath)); location.reload(); };
     </script>
 </body>
 </html>
