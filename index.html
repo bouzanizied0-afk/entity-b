@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>Quantum Synaptic Engine V19 - Fixed</title>
+    <title>Quantum Synaptic V19 - Quad Engine</title>
     <style>
         :root { --neon: #0f0; --bg: #050505; --red: #ff4444; --green: #44ff44; --blue: #4444ff; --alpha: #ffffff; }
         body { background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
@@ -13,11 +13,9 @@
         .g { color: var(--green); border-color: var(--green); }
         .b { color: var(--blue); border-color: var(--blue); }
         .a { color: var(--alpha); border-color: var(--alpha); }
-        #perc { font-size: 3rem; font-weight: bold; color: #0ff; margin: 0; }
         #matrixCanvas { border: 2px solid var(--neon); background: #000; max-width: 80vw; max-height: 45vh; image-rendering: pixelated; }
         .controls { position: fixed; bottom: 20px; display: flex; gap: 10px; }
-        .btn { padding: 10px 20px; border: 1px solid var(--neon); background: transparent; color: var(--neon); cursor: pointer; font-size: 0.9rem; }
-        .btn:hover { background: var(--neon); color: #000; }
+        .btn { padding: 10px 20px; border: 1px solid var(--neon); background: transparent; color: var(--neon); cursor: pointer; }
     </style>
 </head>
 <body>
@@ -29,22 +27,17 @@
         <div class="cylinder a"><h4>ALP_ENG</h4><div id="vA" class="val">255</div></div>
     </div>
 
-    <div class="dashboard">
-        <p id="perc">0%</p>
-        <div id="status">النظام: جاهز للإقلاع</div>
-    </div>
-
+    <div id="perc" style="font-size: 3rem;">0%</div>
     <canvas id="matrixCanvas"></canvas>
 
     <div class="controls">
         <label class="btn"> تغذية البيانات <input type="file" id="fileInput" hidden accept="image/*"> </label>
-        <button id="sendBtn" class="btn" style="border-color:#0ff; color:#0ff;">إشعال المحركات</button>
-        <button id="clearBtn" class="btn" style="border-color:red; color:red;">تدمير</button>
+        <button id="sendBtn" class="btn" style="color:#0ff;">إشعال المحركات</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, remove, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
@@ -58,11 +51,10 @@
         const rootPath = 'quantum_v19_synaptic';
 
         const canvas = document.getElementById('matrixCanvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         let imageDataRaw = null;
         let imageWidth = 0, imageHeight = 0;
 
-        // --- Workers Setup ---
         const workers = {
             r: new Worker('./worker.js'),
             g: new Worker('./worker.js'),
@@ -70,15 +62,14 @@
             a: new Worker('./worker.js')
         };
 
-        // استقبال البيانات من العمال للرسم
         Object.keys(workers).forEach(key => {
             workers[key].onmessage = (e) => {
-                if (e.data.type === 'pixel') {
-                    // تحديث العدادات
-                    document.getElementById(`v${key.toUpperCase()}`).innerText = e.data.color.toString().padStart(3, '0');
-                    // الرسم الفوري على الكانفاس الرئيسي
-                    ctx.fillStyle = e.data.rgba;
-                    ctx.fillRect(e.data.x, e.data.y, 1, 1);
+                if (e.data.type === 'renderBatch') {
+                    e.data.data.forEach(p => {
+                        ctx.fillStyle = `rgba(${p.r},${p.g},${p.b},${p.a/255})`;
+                        ctx.fillRect(p.x, p.y, 1, 1);
+                        if(p.colorVal > 0) document.getElementById(`v${key.toUpperCase()}`).innerText = p.colorVal.toString().padStart(3, '0');
+                    });
                 }
             };
         });
@@ -92,8 +83,11 @@
                     canvas.width = imageWidth; canvas.height = imageHeight;
                     ctx.drawImage(img, 0, 0);
                     imageDataRaw = ctx.getImageData(0,0,imageWidth,imageHeight).data;
-                    document.getElementById('sendBtn').disabled = false;
-                    document.getElementById('status').innerText = "تم حجز البكسلات";
+                    
+                    Object.keys(workers).forEach(key => {
+                        const copy = new Uint8ClampedArray(imageDataRaw).buffer;
+                        workers[key].postMessage({ type: 'initImage', channel: key, width: imageWidth, height: imageHeight, imageData: copy }, [copy]);
+                    });
                 };
                 img.src = ev.target.result;
             };
@@ -101,37 +95,20 @@
         };
 
         document.getElementById('sendBtn').onclick = async () => {
-            const totalPixels = imageWidth * imageHeight;
-            await set(ref(db, `${rootPath}/m`), {w: imageWidth, h: imageHeight});
-
-            // إعطاء كل عامل نسخة من البيانات
-            Object.values(workers).forEach(w => {
-                const copy = new Uint8ClampedArray(imageDataRaw);
-                w.postMessage({ type: 'initImage', width: imageWidth, height: imageHeight, imageData: copy.buffer }, [copy.buffer]);
-            });
-
-            const batchSize = 150;
-            for (let i = 0; i < totalPixels; i += batchSize) {
-                const p = Math.round((i / totalPixels) * 100);
-                await update(ref(db, rootPath), {
-                    cmd: `GENERATE_BATCH:${i}:${Math.min(i + batchSize, totalPixels)}`,
-                    perc: p
-                });
+            const total = imageWidth * imageHeight;
+            const batchSize = 500; 
+            for (let i = 0; i < total; i += batchSize) {
+                const p = Math.round((i / total) * 100);
+                await update(ref(db, rootPath), { cmd: `GENERATE_BATCH:${i}:${Math.min(i + batchSize, total)}`, perc: p });
                 document.getElementById('perc').innerText = p + "%";
-                await new Promise(r => setTimeout(r, 5));
             }
         };
 
         onValue(ref(db, rootPath), (snap) => {
             const val = snap.val();
-            if (val && val.m) { canvas.width = val.m.w; canvas.height = val.m.h; imageWidth = val.m.w; imageHeight = val.m.h; }
+            if (val && val.cmd) Object.values(workers).forEach(w => w.postMessage({ type: 'command', cmd: val.cmd }));
             if (val && val.perc) document.getElementById('perc').innerText = val.perc + "%";
-            if (val && val.cmd) {
-                Object.values(workers).forEach(w => w.postMessage({ type: 'command', cmd: val.cmd }));
-            }
         });
-
-        document.getElementById('clearBtn').onclick = () => { remove(ref(db, rootPath)); location.reload(); };
     </script>
 </body>
 </html>
