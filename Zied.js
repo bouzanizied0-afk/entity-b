@@ -1,26 +1,14 @@
-// استيراد مكتبة Socket والاتصال بسيرفر ترمكس المحلي
+// --- [0. قناة الاتصال الموحدة] ---
 import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
 const socket = io("http://127.0.0.1:3000"); 
+
 // --- [1. الحالة العالمية الموحدة: خزان الذاكرة والنبض] ---
-let fileBuffer = null;      // الجسر المادي لتخزين البايتات
-let lastSessionID = null;   // معرف الجلسة لضمان عدم تداخل البيانات
-let virtualClock = 0;       // إبرة العداد الدوار المرجعية
-let currentGlobalSeed = 0;  // مفتاحالتزامن الزمكاني
-
-// إرسال إشارة حجز المساحة وبدء الجلسة للسيرفر
-socket.emit('qup_stream_init', { 
-    total: rawData.length, 
-    seed: globalSeed, 
-    sid: sessionID,
-    name: file.name 
-});
-
-
-// ربط محرك Socket.io (تأكد من وجود المكتبة في مشروعك)
-const socket = io("http://127.0.0.1:3000"); 
+let fileBuffer = null;      
+let lastSessionID = null;   
+let virtualClock = 0;       
+let currentGlobalSeed = 0;  
 
 // --- [2. النواة الحسابية: البوصلة والمحاسب] ---
-
 function getSpatioTemporalByte(tick, seed) {
     const compositeWave = (
         Math.sin(tick * 0.05 + seed) + 
@@ -48,7 +36,6 @@ function countPulses(packet) {
 }
 
 // --- [3. المعمار الباني: وظيفة الـ Render] ---
-
 function render(clk, step, seed, byteValue) {
     const offset = clk * step;
     if (!fileBuffer || offset >= fileBuffer.length) return;
@@ -59,14 +46,14 @@ function render(clk, step, seed, byteValue) {
         fileBuffer[offset] = byteValue;
     }
 
-    // تحديث الواجهة عند كل 1000 نبضة لضمان الأداء
-    if (clk % 1000 === 0) {
-        updateProgressPulse(offset / fileBuffer.length);
+    // تحديث الواجهة والعداد الدوار
+    if (clk % 500 === 0) { 
+        if (window.updateProgressPulse) window.updateProgressPulse(offset / fileBuffer.length);
+        if (window.updateRotaryVisual) window.updateRotaryVisual(clk, fileBuffer.length);
     }
 }
 
 // --- [4. بوابة الدخول: مستقبل الملفات والرسائل] ---
-
 document.getElementById('fileInput').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -76,9 +63,10 @@ document.getElementById('fileInput').onchange = async (e) => {
     const sessionID = Date.now();
     currentGlobalSeed = Math.random(); 
 
-    console.log(`📡 استيعاب ملف: ${file.name} | الحجم: ${rawData.length}`);
+    console.log(`📡 استيعاب مادة: ${file.name} | الحجم: ${rawData.length}`);
 
-    socket.emit('universal_stream_init', { 
+    // إشارة الحجز والتمهيد للسيرفر
+    socket.emit('qup_stream_init', { 
         name: file.name, total: rawData.length, sid: sessionID, seed: currentGlobalSeed 
     });
 
@@ -87,17 +75,18 @@ document.getElementById('fileInput').onchange = async (e) => {
     sendBtn.onclick = () => executeUniversalStream(rawData, currentGlobalSeed, sessionID);
 };
 
-// حقن الرسائل النصية كنبضات
 window.injectTextMessage = (text) => {
     const encoder = new TextEncoder();
     const textData = encoder.encode(text);
-    executeUniversalStream(textData, Math.random(), Date.now());
+    const sid = Date.now();
+    const seed = Math.random();
+    socket.emit('qup_stream_init', { name: "TextMsg", total: textData.length, sid: sid, seed: seed });
+    executeUniversalStream(textData, seed, sid);
 };
 
 // --- [5. المحلل الطبقي: محرك بث البايتات] ---
-
 async function executeUniversalStream(rawData, seed, sid) {
-    const layers = [8, 4, 2, 1];
+    const layers = [8, 4, 2, 1]; // نظام التدرج الظهوري (من الضبابية إلى الحدة)
     const threshold = 5;
 
     for (let step of layers) {
@@ -120,51 +109,34 @@ async function executeUniversalStream(rawData, seed, sid) {
 
             if (packet.length > 8000) {
                 if (skipCount > 0) { packet += "S" + skipCount + "."; skipCount = 0; }
-                socket.emit('universal_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
+                socket.emit('qup_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
                 packet = "";
-                await new Promise(res => setTimeout(res, 0));
+                await new Promise(res => setTimeout(res, 0)); // تحرير المعالج لضمان سلاسة الواجهة
             }
         }
-                if (packet || skipCount > 0) {
+        if (packet || skipCount > 0) {
             if (skipCount > 0) packet += "S" + skipCount + ".";
-            
-            // 🟢 استبدل السطر القديم بهذا (في نهاية الدالة)
-            socket.emit('qup_stream', { 
-                d: packet, 
-                step: step, 
-                c: clock, 
-                sid: sid, 
-                seed: seed,
-                total: rawData.length 
-            });
-        }
-
-            socket.emit('universal_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
+            socket.emit('qup_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
         }
     }
 }
 
 // --- [6. المترجم الشامل: استقبال وإعادة بناء المادة] ---
-
-// --- [6. المترجم الشامل: استقبال وإعادة بناء المادة] ---
-
-// 🟢 ضع الكود هنا بدلاً من دالة universal_receive القديمة
 socket.on('qup_receive', (data) => {
     if (!data || !data.d) return;
 
-    // تصفير العداد وحجز الذاكرة إذا كانت الجلسة جديدة
     if (data.sid !== lastSessionID) {
+        // حجز ذاكرة مشتركة لسرعة خرافية في الكتابة
         fileBuffer = new Uint8Array(new SharedArrayBuffer(data.total));
         lastSessionID = data.sid;
         virtualClock = 0;
-        console.log("🌀 تم مزامنة الجلسة الجديدة عبر السيرفر.");
+        console.log("🌀 تم فتح القناة الزمكانية لاستقبال مادة جديدة...");
     }
 
     const raw = data.d;
     const step = data.step;
-    let clk = data.c - countPulses(raw); // مزامنة الساعة مع المرسل
+    let clk = data.c - countPulses(raw); 
     
-    // معالجة الحزمة القادمة (فك التشفير الزمكاني)
     let i = 0;
     while (i < raw.length) {
         if (raw[i] === "S") {
@@ -186,42 +158,3 @@ socket.on('qup_receive', (data) => {
     }
     virtualClock = clk;
 });
-
-    if (!data || !data.d) return;
-
-    if (data.sid !== lastSessionID) {
-        fileBuffer = new Uint8Array(new SharedArrayBuffer(data.total));
-        lastSessionID = data.sid;
-        virtualClock = 0;
-    }
-
-    const raw = data.d;
-    const step = data.step;
-    let currentTick = data.c - countPulses(raw); 
-    let i = 0;
-
-    while (i < raw.length) {
-        if (raw[i] === "S") {
-            let end = raw.indexOf(".", i);
-            let count = parseInt(raw.substring(i + 1, end));
-            for (let s = 0; s < count; s++) {
-                render(currentTick + s, step, data.seed, -1);
-            }
-            currentTick += count;
-            i = end + 1;
-        } 
-        else if (raw[i] === "B") {
-            const byteValue = raw.charCodeAt(i + 1) - 0x4E00;
-            render(currentTick, step, data.seed, byteValue);
-            currentTick++;
-            i += 2;
-        } 
-        else i++;
-    }
-    virtualClock = currentTick;
-});
-
-// --- [دوال مساعدة للواجهة - يجب تعريفها حسب تصميمك] ---
-function updateProgressPulse(ratio) { /* تحديث شريط التقدم */ }
-function updateRotaryVisual(tick, total) { /* تحديث العداد الدوار */ }
-function triggerLayerUpdate(buffer, step) { /* معالجة الملف عند كل طبقة */ }
