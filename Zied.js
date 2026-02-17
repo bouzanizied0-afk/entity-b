@@ -10,7 +10,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const rootPath = 'QUP_FullColor_V1';
+const rootPath = 'QUP_Termux_Stream';
 const canvas = document.getElementById('matrixCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
 
