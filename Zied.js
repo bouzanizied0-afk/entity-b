@@ -10,7 +10,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const rootPath = 'QUP_Termux_Stream';
+const inputPath = 'QUP_FullColor_V1';
+const outputPath = 'QUP_Termux_Stream';
 const canvas = document.getElementById('matrixCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -28,7 +29,7 @@ document.getElementById('sendBtn').onclick = async () => {
     const layers = [8, 4, 2, 1];
     const threshold = 10;
     
-    await set(ref(db, rootPath), null);
+    await set(ref(db, inputPath), null);
 
     for (let step of layers) {
         let packet = "";
@@ -56,7 +57,7 @@ document.getElementById('sendBtn').onclick = async () => {
 
                 if (packet.length > 6000) {
                     if (skipCount > 0) { packet += "S" + skipCount + "."; skipCount = 0; }
-                    await update(ref(db, rootPath), { d: packet, step, c: clock, w: canvas.width, h: canvas.height });
+                    await update(ref(db, inputPath), { d: packet, step, c: clock, w: canvas.width, h: canvas.height });
                     packet = "";
                     await new Promise(res => setTimeout(res, 5));
                 }
@@ -64,13 +65,13 @@ document.getElementById('sendBtn').onclick = async () => {
         }
         if (packet || skipCount > 0) {
             if (skipCount > 0) packet += "S" + skipCount + ".";
-            await update(ref(db, rootPath), { d: packet, step, c: clock, w: canvas.width, h: canvas.height });
+            await update(ref(db, inputPath), { d: packet, step, c: clock, w: canvas.width, h: canvas.height });
         }
     }
 };
 
 // 2. الاستقبال بالألوان وتصحيح الشبكة (Grid Sync & Overdrawing +0.5)
-onValue(ref(db, rootPath), (snap) => {
+onValue(ref(db, outputPath), (snap) => {
     const data = snap.val();
     if (!data || !data.d) return;
 
@@ -102,7 +103,7 @@ onValue(ref(db, rootPath), (snap) => {
 });
 
 function render(clk, step, w, r, g = 0, b = 0) {
-    // تصحيح الشبكة بناءً على العرض الثابت
+    // تصحيح الشبكة بناءً على العرض الثابت (كودك كما هو)
     const pixelsPerRow = Math.ceil(w / step);
     const x = (clk % pixelsPerRow) * step;
     const y = Math.floor(clk / pixelsPerRow) * step;
@@ -114,10 +115,16 @@ function render(clk, step, w, r, g = 0, b = 0) {
     } else {
         finalR = r; finalG = g; finalB = b;
     }
-    
+
+    // --- الإضافة الضرورية لإتمام الرسم ---
     ctx.fillStyle = `rgb(${finalR},${finalG},${finalB})`;
-       // استبدل السطر في دالة render بهذا المنطق:
+    
+    // حساب الحجم لضمان عدم وجود فواصل (Sharpness logic)
     const size = (step === 1) ? step : step + 0.5;
+    
+    // رسم المربع فعلياً
+    ctx.fillRect(x, y, size, size);
+     } // <--- قوس إغلاق الدالة
 
 function countPixels(p) {
     let total = 0, i = 0;
