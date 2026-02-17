@@ -1,58 +1,111 @@
+لا اقصد هذا الملف ليتوافق مع ملف Zied.js
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>QUP Protocol - تجربة النقل النفاث</title>
+<title>دردشة متزامنة مع الخادم</title>
 <style>
-/* تصميمك الأصلي مع تحسينات بسيطة للكانفاس */
-html,body{margin:0;height:100%;font-family:sans-serif;background:#0a0a0a;color:#eee;overflow: hidden;}
+html,body{margin:0;height:100%;font-family:sans-serif;background:#0a0a0a;color:#eee}
 #chat{display:flex;flex-direction:column;height:100%}
-#msgs{flex:1;overflow:auto;padding:10px;display: flex; flex-direction: column; align-items: center;}
-
-/* منطقة العرض (الكانفاس) */
-#matrixCanvas {
-    max-width: 95%;
-    max-height: 70vh;
-    border: 2px solid #00d4ff;
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-    background: #000;
-    margin-top: 10px;
-}
-
-#bar{display:flex;padding:15px;gap:10px;border-top:1px solid #222;background: #111;}
-input[type=text]{flex:1;padding:10px;border-radius:8px;border:none;background: #222;color: white;}
-button{padding:10px 20px;border:none;border-radius:8px;background:#00d4ff;color:#000;cursor:pointer;font-weight: bold;}
-button:disabled {background: #444; cursor: not-allowed;}
+#msgs{flex:1;overflow:auto;padding:10px}
+.msg{margin:6px 0;padding:8px 12px;border-radius:10px;max-width:70%;position:relative}
+.me{background:#00d4ff;color:#000;margin-left:auto}
+.other{background:#222}
+#bar{display:flex;padding:10px;gap:5px;border-top:1px solid #222}
+input[type=text]{flex:1;padding:8px;border-radius:8px;border:none}
+button{padding:8px 12px;border:none;border-radius:8px;background:#00d4ff;cursor:pointer}
 input[type=file]{display:none}
-
-/* شريط النسبة المئوية الذي أضفناه في Zied.js سيظهر هنا بتنسيق جميل */
-#progressStatus {
-    width: 100%;
-    text-align: center;
-    font-family: monospace;
-    padding: 5px;
-    background: #111;
-    border-bottom: 1px solid #222;
-}
+img{max-width:200px;border-radius:8px}
+a{color:#00d4ff}
+.deleteBtn{position:absolute;top:4px;left:4px;width:20px;height:20px;background:#ff4d4d;color:#fff;border:none;border-radius:50%;cursor:pointer;font-weight:bold;line-height:18px;text-align:center;padding:0;}
 </style>
 </head>
 <body>
 
 <div id="chat">
-  <div id="progressStatus">جاهز للإرسال...</div>
-
-  <div id="msgs">
-    <canvas id="matrixCanvas"></canvas>
-  </div>
-
+  <div id="msgs"></div>
   <div id="bar">
-    <button onclick="document.getElementById('fileInput').click()">📎 اختيار صورة</button>
-    <input id="fileInput" type="file" accept="image/*" />
-    <button id="sendBtn" disabled>🚀 إرسال بالنظام النفاث</button>
+    <input id="text" placeholder="اكتب رسالة..." />
+    <button onclick="sendText()">إرسال</button>
+    <button onclick="file.click()">📎</button>
+    <input id="file" type="file" accept="image/*" />
   </div>
 </div>
 
-<script type="module" src="Zied.js"></script>
+<script type="module">
+import { ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { db, PATHS, startHeartbeat } from "./serverCore.js";
+import { sendImage, onImageReceived } from "./imageSync.js";
 
+startHeartbeat();
+
+const msgsRef = ref(db, PATHS.stream);
+const msgsDiv = document.getElementById("msgs");
+const text = document.getElementById("text");
+const file = document.getElementById("file");
+const me = crypto.randomUUID();
+
+// ================= ربط imageSync =================
+import { fingerprintImage, transmitFingerprint, listenAndReconstruct } from "./imageSync.js";
+
+// استقبال وبناء الصورة تدريجيًا
+listenAndReconstruct(db, (data) => {
+  console.log("تقدم الصورة:", data.length);
+  // يمكنك هنا رسم البيانات على canvas إذا أحببت
+});
+
+
+// إرسال النصوص
+window.sendText = () => {
+  if(!text.value) return;
+  push(msgsRef, { type: "text", data: text.value, uid: me });
+  text.value = "";
+};
+
+// عرض الرسائل
+function addMsg(html, mine){
+  const d = document.createElement("div");
+  d.className = "msg " + (mine ? "me" : "other");
+  d.innerHTML = html;
+
+  const btn = document.createElement("button");
+  btn.textContent = "×";
+  btn.className = "deleteBtn";
+  btn.onclick = () => d.remove();
+  d.appendChild(btn);
+
+  msgsDiv.appendChild(d);
+  msgsDiv.scrollTop = msgsDiv.scrollHeight;
+}
+
+// مراقبة الرسائل الجديدة
+onChildAdded(msgsRef, s => {
+  const m = s.val();
+  if(!m) return;
+  if(m.type === "text") addMsg(m.data, m.uid===me);
+  if(m.type === "img") addMsg(`<img src="${m.data}">`, m.uid===me);
+});
+
+// رفع الصور
+file.addEventListener("change", async () => {
+  const f = file.files[0];
+  if (!f) return;
+
+  /* 1️⃣ التفكيك المحلي + الإرسال الجزئي الفوري */
+  const fp = await fingerprintImage(f);
+  transmitFingerprint(db, fp);
+
+  /* 2️⃣ الإرسال الكامل في الخلفية */
+  sendImage(f);
+
+  file.value = "";
+});
+
+// استقبال الصور فورًا
+onImageReceived((dataURL) => {
+  push(msgsRef, { type: "img", data: dataURL, uid: me });
+});
+
+</script>
 </body>
 </html>
