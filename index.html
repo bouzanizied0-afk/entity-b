@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUP FullColor | Unified Protocol</title>
+    <title>QUP Unified Console | مركز التحكم الموحد</title>
     <style>
         :root {
             --neon-blue: #00f2ff;
             --neon-green: #00ff41;
+            --neon-red: #ff3131;
             --dark-bg: #0a0a0c;
             --panel-bg: rgba(20, 20, 25, 0.95);
         }
@@ -15,194 +16,255 @@
         body {
             background: var(--dark-bg);
             color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', Courier, monospace;
             margin: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             min-height: 100vh;
-            overflow: hidden;
+            padding: 20px;
+            overflow-x: hidden;
         }
 
-        /* لوحة التحكم العلوية */
+        /* لوحة القيادة العلوية */
         .dashboard {
             background: var(--panel-bg);
             border: 1px solid var(--neon-blue);
-            padding: 20px;
+            padding: 15px 25px;
             border-radius: 12px;
-            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
-            width: 350px;
-            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.15);
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 20px;
             position: relative;
         }
 
-        h2 {
-            margin: 0 0 10px 0;
-            font-size: 1.2rem;
-            letter-spacing: 2px;
-            color: var(--neon-blue);
-            text-transform: uppercase;
-        }
+        .system-info { text-align: right; }
+        .system-info h2 { margin: 0; font-size: 1rem; color: var(--neon-blue); letter-spacing: 1px; }
 
-        /* مؤشر الاتصال والنسبة المئوية */
-        .status-bar {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            font-size: 0.85rem;
-            margin-bottom: 5px;
+        /* العداد المرمز والنسبة المئوية */
+        .telemetry {
+            text-align: center;
+            flex-grow: 1;
         }
-
         #progressStatus {
+            font-size: 1.5rem;
             color: var(--neon-green);
-            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 10px var(--neon-green);
             font-weight: bold;
-            text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
-            min-height: 1.2em;
+        }
+        #rotaryCounter {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--neon-blue);
+            opacity: 0.8;
         }
 
-        .dot-group {
+        /* لمبة الاتصال */
+        .connection-status {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-
         .dot {
-            width: 8px;
-            height: 8px;
-            background: #555;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            box-shadow: 0 0 5px #000;
+            background: var(--neon-red); /* الافتراضي أحمر */
+            box-shadow: 0 0 10px var(--neon-red);
+            transition: 0.5s;
         }
-        .online { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
-
-        /* منطقة العرض (الكانفاس) */
-        .canvas-container {
-            position: relative;
-            border: 2px solid #333;
-            background: #000;
-            line-height: 0;
-            max-width: 90vw;
-            max-height: 60vh;
-            overflow: auto;
-            box-shadow: 0 0 30px rgba(0,0,0,0.5);
-            border-radius: 8px;
-        }
-
-        canvas {
-            image-rendering: pixelated; /* لضمان حدة البروتوكول المجهري */
-            display: block;
-        }
-
-        /* الأزرار والتحكم */
-        .controls {
-            margin-top: 25px;
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: 1px solid var(--neon-blue);
-            background: transparent;
-            color: var(--neon-blue);
-            cursor: pointer;
-            font-weight: bold;
-            transition: 0.3s;
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            border-radius: 4px;
-        }
-
-        .btn:hover:not(:disabled) {
-            background: var(--neon-blue);
-            color: #000;
-            box-shadow: 0 0 15px var(--neon-blue);
-        }
-
-        .btn:disabled {
-            border-color: #444;
-            color: #444;
-            cursor: not-allowed;
-        }
-
-        .btn-send {
-            border-color: var(--neon-green);
-            color: var(--neon-green);
-        }
-
-        .btn-send:hover:not(:disabled) {
+        .dot.online {
             background: var(--neon-green);
-            color: #000;
             box-shadow: 0 0 15px var(--neon-green);
         }
 
-        #fileInput { display: none; }
+        /* منطقة العرض والدردشة */
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
 
-        .upload-label {
-            display: inline-block;
-            padding: 12px 24px;
-            border: 1px solid #fff;
-            cursor: pointer;
+        .canvas-section {
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+        }
+        canvas { image-rendering: pixelated; max-width: 100%; height: auto; }
+
+        /* نافذة الدردشة */
+        .chat-section {
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-blue);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            height: 500px;
+        }
+        .chat-header {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+            font-size: 0.8rem;
+            color: var(--neon-blue);
+            text-align: center;
+        }
+        #messages {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: monospace;
             font-size: 0.85rem;
+            color: var(--neon-green);
+        }
+        .chat-input-area {
+            padding: 10px;
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 5px;
+        }
+        #msgInput {
+            flex-grow: 1;
+            background: #000;
+            border: 1px solid var(--neon-blue);
+            color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        /* أزرار التحكم */
+        .bottom-controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            max-width: 1200px;
+            justify-content: center;
+        }
+        .btn {
+            padding: 12px 25px;
+            background: transparent;
+            border: 1px solid var(--neon-blue);
+            color: var(--neon-blue);
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
             border-radius: 4px;
             transition: 0.3s;
         }
-        .upload-label:hover {
-            background: #fff;
-            color: #000;
-        }
+        .btn:hover:not(:disabled) { background: var(--neon-blue); color: #000; box-shadow: 0 0 15px var(--neon-blue); }
+        .btn-send { border-color: var(--neon-green); color: var(--neon-green); }
+        .btn-send:hover:not(:disabled) { background: var(--neon-green); color: #000; box-shadow: 0 0 15px var(--neon-green); }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-        /* زخرفة تقنية */
+        #fileInput { display: none; }
+        .upload-lbl { cursor: pointer; border: 1px dashed #fff; padding: 12px 25px; border-radius: 4px; }
+
         .scan-line {
             position: absolute;
             width: 100%;
-            height: 2px;
-            background: rgba(0, 242, 255, 0.1);
+            height: 1px;
+            background: rgba(0, 242, 255, 0.2);
             top: 0;
             left: 0;
-            animation: scan 4s linear infinite;
+            animation: scan 3s linear infinite;
             pointer-events: none;
         }
-
-        @keyframes scan {
-            0% { top: 0; }
-            100% { top: 100%; }
-        }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
-        <div class="scan-line"></div>
-        <h2>QUP FullColor V1</h2>
-        <div class="status-bar">
-            <div class="dot-group">
-                <div id="connDot" class="dot online"></div>
-                <span id="statusText">نظام البث متصل</span>
-            </div>
-            <div id="progressStatus">جاهز لبث البروتوكول...</div>
+        <div class="system-info">
+            <h2>QUP UNIFIED PROTOCOL</h2>
+            <div id="rotaryCounter">CLOCK: 0000000000</div>
+        </div>
+
+        <div class="telemetry">
+            <div id="progressStatus">0%</div>
+            <div style="font-size: 0.6rem;">STREAMING SYNC</div>
+        </div>
+
+        <div class="connection-status">
+            <span id="statusText" style="font-size: 0.7rem;">OFFLINE</span>
+            <div id="connDot" class="dot"></div>
         </div>
     </div>
 
-    <div class="canvas-container">
-        <canvas id="matrixCanvas"></canvas>
+    <div class="main-container">
+        <div class="canvas-section">
+            <div class="scan-line"></div>
+            <canvas id="matrixCanvas"></canvas>
+        </div>
+
+        <div class="chat-section">
+            <div class="chat-header">SECURE DEEP-STREAM CHAT</div>
+            <div id="messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="msgInput" placeholder="اكتب رسالة نبضية...">
+                <button id="sendMsgBtn" class="btn" style="padding: 5px 10px;">بث</button>
+            </div>
+        </div>
     </div>
 
-    <div class="controls">
-        <label for="fileInput" class="upload-label">📁 اختيار مصفوفة</label>
-        <input type="file" id="fileInput" accept="image/*">
+    <div class="bottom-controls">
+        <label for="fileInput" class="upload-lbl">📁 اختيار مصفوفة/ملف</label>
+        <input type="file" id="fileInput">
         
         <button id="sendBtn" class="btn btn-send" disabled>إطلاق النبضة الكاملة</button>
-        
-        <button id="clearBtn" class="btn" onclick="location.reload()">حذف وتصفير</button>
+        <button id="clearBtn" class="btn" onclick="location.reload()">تصفير شامل</button>
     </div>
+
+    <script type="module">
+        import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
+        
+        // تحديث لمبة الاتصال
+        const socket = io("http://127.0.0.1:3000");
+        socket.on('connect', () => {
+            document.getElementById('connDot').classList.add('online');
+            document.getElementById('statusText').innerText = 'ONLINE';
+        });
+        socket.on('disconnect', () => {
+            document.getElementById('connDot').classList.remove('online');
+            document.getElementById('statusText').innerText = 'OFFLINE';
+        });
+
+        // تعريف الدوال المساعدة التي طلبها Zied.js للواجهة
+        window.updateProgressPulse = (ratio) => {
+            const percent = Math.floor(ratio * 100);
+            document.getElementById('progressStatus').innerText = percent + "%";
+        };
+
+        window.updateRotaryVisual = (tick, total) => {
+            document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
+        };
+
+        // تفعيل إرسال الرسائل عبر الدردشة
+        document.getElementById('sendMsgBtn').onclick = () => {
+            const input = document.getElementById('msgInput');
+            if(input.value && window.injectTextMessage) {
+                window.injectTextMessage(input.value);
+                const msgDiv = document.createElement('div');
+                msgDiv.innerText = ">> " + input.value;
+                document.getElementById('messages').appendChild(msgDiv);
+                input.value = "";
+            }
+        };
+    </script>
 
     <script type="module" src="Zied.js"></script>
 
