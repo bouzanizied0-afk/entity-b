@@ -10,8 +10,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+
+// المسارات: المرسل يرسل للـ V1 والسيرفر يخرج للـ Stream
 const inputPath = 'QUP_FullColor_V1';
 const outputPath = 'QUP_Termux_Stream';
+
 const canvas = document.getElementById('matrixCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -23,7 +26,7 @@ function getSpatioTemporalClock(tick) {
     };
 }
 
-// 1. الإرسال اللوني الكامل (Full RGB Encoding)
+// 1. الإرسال (يرسل إلى V1 ليقوم السيرفر بمعالجتها)
 document.getElementById('sendBtn').onclick = async () => {
     const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const layers = [8, 4, 2, 1];
@@ -40,7 +43,6 @@ document.getElementById('sendBtn').onclick = async () => {
             for (let x = 0; x < canvas.width; x += step) {
                 const idx = (y * canvas.width + x) * 4;
                 const r = pixels[idx], g = pixels[idx+1], b = pixels[idx+2];
-                
                 const pred = getSpatioTemporalClock(clock);
                 const isMatch = Math.abs(r - pred.r) < threshold && Math.abs(g - pred.g) < threshold;
 
@@ -48,7 +50,6 @@ document.getElementById('sendBtn').onclick = async () => {
                     skipCount++;
                 } else {
                     if (skipCount > 0) { packet += "S" + skipCount + "."; skipCount = 0; }
-                    // X + 3 رموز للألوان (إجمالي 4 رموز) لضمان الدقة المجهرية
                     packet += "X" + String.fromCharCode(0x4E00 + r) + 
                                    String.fromCharCode(0x5E00 + g) + 
                                    String.fromCharCode(0x6E00 + b);
@@ -70,14 +71,11 @@ document.getElementById('sendBtn').onclick = async () => {
     }
 };
 
-// 2. الاستقبال بالألوان وتصحيح الشبكة (Grid Sync & Overdrawing +0.5)
+// 2. الاستقبال (يستقبل من مخرج السيرفر المنقى)
 onValue(ref(db, outputPath), (snap) => {
     const data = snap.val();
     if (!data || !data.d) return;
-
-    if (canvas.width !== data.w) {
-        canvas.width = data.w; canvas.height = data.h;
-    }
+    if (canvas.width !== data.w) { canvas.width = data.w; canvas.height = data.h; }
 
     const raw = data.d;
     const step = data.step;
@@ -103,11 +101,9 @@ onValue(ref(db, outputPath), (snap) => {
 });
 
 function render(clk, step, w, r, g = 0, b = 0) {
-    // تصحيح الشبكة بناءً على العرض الثابت (كودك كما هو)
     const pixelsPerRow = Math.ceil(w / step);
     const x = (clk % pixelsPerRow) * step;
     const y = Math.floor(clk / pixelsPerRow) * step;
-    
     let finalR, finalG, finalB;
     if (r === -1) {
         const pred = getSpatioTemporalClock(clk);
@@ -115,25 +111,15 @@ function render(clk, step, w, r, g = 0, b = 0) {
     } else {
         finalR = r; finalG = g; finalB = b;
     }
-
-    // --- الإضافة الضرورية لإتمام الرسم ---
     ctx.fillStyle = `rgb(${finalR},${finalG},${finalB})`;
-    
-    // حساب الحجم لضمان عدم وجود فواصل (Sharpness logic)
     const size = (step === 1) ? step : step + 0.5;
-    
-    // رسم المربع فعلياً
     ctx.fillRect(x, y, size, size);
-     } // <--- قوس إغلاق الدالة
+}
 
 function countPixels(p) {
     let total = 0, i = 0;
     while(i < p.length) {
-        if(p[i] === 'S') { 
-            let end = p.indexOf('.', i); 
-            total += parseInt(p.substring(i+1, end)); 
-            i = end + 1; 
-        }
+        if(p[i] === 'S') { let end = p.indexOf('.', i); total += parseInt(p.substring(i+1, end)); i = end + 1; }
         else if(p[i] === 'X') { total += 1; i += 4; }
         else i++;
     }
