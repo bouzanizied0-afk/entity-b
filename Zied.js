@@ -26,7 +26,7 @@ function getSpatioTemporalClock(tick) {
 document.getElementById('sendBtn').onclick = async () => {
     const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const layers = [8, 4, 2, 1];
-    const threshold = 25;
+    const threshold = 10;
     
     await set(ref(db, rootPath), null);
 
@@ -116,10 +116,8 @@ function render(clk, step, w, r, g = 0, b = 0) {
     }
     
     ctx.fillStyle = `rgb(${finalR},${finalG},${finalB})`;
-    // Overdrawing بمقدار +0.5 لمنع الفواصل السوداء
-    const size = step + (step > 1 ? 0.5 : 0);
-    ctx.fillRect(x, y, size, size);
-}
+       // استبدل السطر في دالة render بهذا المنطق:
+    const size = (step === 1) ? step : step + 0.5;
 
 function countPixels(p) {
     let total = 0, i = 0;
