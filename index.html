@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUP FullColor | Unified Protocol</title>
+    <style>
+        :root {
+            --neon-blue: #00f2ff;
+            --neon-green: #00ff41;
+            --dark-bg: #0a0a0c;
+            --panel-bg: rgba(20, 20, 25, 0.95);
+        }
+
+        body {
+            background: var(--dark-bg);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* لوحة التحكم العلوية */
+        .dashboard {
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-blue);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+            width: 350px;
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            color: var(--neon-blue);
+            text-transform: uppercase;
+        }
+
+        /* مؤشر الاتصال */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 0.8rem;
+            margin-bottom: 15px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background: #555;
+            border-radius: 50%;
+            box-shadow: 0 0 5px #000;
+        }
+        .online { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
+
+        /* منطقة العرض (الكانفاس) */
+        .canvas-container {
+            position: relative;
+            border: 2px solid #333;
+            background: #000;
+            line-height: 0;
+            max-width: 90vw;
+            max-height: 60vh;
+            overflow: auto;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            image-rendering: pixelated; /* لضمان حدة البروتوكول المجهري */
+            display: block;
+        }
+
+        /* الأزرار والتحكم */
+        .controls {
+            margin-top: 25px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: 1px solid var(--neon-blue);
+            background: transparent;
+            color: var(--neon-blue);
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            border-radius: 4px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: var(--neon-blue);
+            color: #000;
+            box-shadow: 0 0 15px var(--neon-blue);
+        }
+
+        .btn:disabled {
+            border-color: #444;
+            color: #444;
+            cursor: not-allowed;
+        }
+
+        .btn-send {
+            border-color: var(--neon-green);
+            color: var(--neon-green);
+        }
+
+        .btn-send:hover:not(:disabled) {
+            background: var(--neon-green);
+            color: #000;
+            box-shadow: 0 0 15px var(--neon-green);
+        }
+
+        #fileInput { display: none; }
+
+        .upload-label {
+            display: inline-block;
+            padding: 12px 24px;
+            border: 1px solid #fff;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border-radius: 4px;
+        }
+
+        /* زخرفة تقنية */
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: rgba(0, 242, 255, 0.1);
+            top: 0;
+            left: 0;
+            animation: scan 4s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="scan-line"></div>
+        <h2>QUP FullColor V1</h2>
+        <div class="status-bar">
+            <div id="connDot" class="dot online"></div>
+            <span id="statusText">جاهز لبث البروتوكول</span>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="matrixCanvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <label for="fileInput" class="upload-label">📁 اختيار مصفوفة</label>
+        <input type="file" id="fileInput" accept="image/*">
+        
+        <button id="sendBtn" class="btn btn-send" disabled>إطلاق النبضة الكاملة</button>
+        
+        <button id="clearBtn" class="btn" onclick="location.reload()">حذف وتصفير</button>
+    </div>
+
+    <script type="module" src="Zied.js"></script>
+
+</body>
+</html>
