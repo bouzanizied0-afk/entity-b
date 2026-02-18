@@ -9,173 +9,137 @@
             --neon-blue: #00f2ff;
             --neon-green: #00ff41;
             --neon-red: #ff3131;
-            --dark-bg: #0a0a0c;
-            --panel-bg: rgba(20, 20, 25, 0.95);
+            --dark-bg: #050505;
+            --panel-bg: rgba(10, 10, 15, 0.9);
+            --border-glow: 0 0 15px rgba(0, 242, 255, 0.3);
         }
 
         body {
             background: var(--dark-bg);
+            background-image: radial-gradient(circle at center, #111 0%, #050505 100%);
             color: #fff;
-            font-family: 'Segoe UI', Courier, monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start;
-            min-height: 100vh;
             padding: 20px;
             overflow-x: hidden;
         }
 
+        /* Dashboard Header */
         .dashboard {
             background: var(--panel-bg);
             border: 1px solid var(--neon-blue);
-            padding: 15px 25px;
-            border-radius: 12px;
-            box-shadow: 0 0 20px rgba(0, 242, 255, 0.15);
+            padding: 15px 30px;
+            border-radius: 4px;
+            box-shadow: var(--border-glow);
             width: 100%;
-            max-width: 800px;
+            max-width: 1100px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            position: relative;
+            margin-bottom: 25px;
+            border-right: 5px solid var(--neon-blue);
         }
 
-        .system-info { text-align: right; }
-        .system-info h2 { margin: 0; font-size: 1rem; color: var(--neon-blue); letter-spacing: 1px; }
+        .system-info h2 { margin: 0; font-size: 1.2rem; color: var(--neon-blue); letter-spacing: 2px; }
+        #rotaryCounter { font-family: 'Courier New', monospace; color: var(--neon-blue); font-size: 0.9rem; margin-top: 5px; }
 
-        .telemetry {
-            text-align: center;
-            flex-grow: 1;
-        }
-        #progressStatus {
-            font-size: 1.5rem;
+        .telemetry #progressStatus {
+            font-size: 2rem;
             color: var(--neon-green);
             text-shadow: 0 0 10px var(--neon-green);
-            font-weight: bold;
-        }
-        #rotaryCounter {
-            font-family: 'Courier New', monospace;
-            font-size: 0.8rem;
-            color: var(--neon-blue);
-            opacity: 0.8;
+            font-weight: 900;
         }
 
-        .connection-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: var(--neon-red);
-            box-shadow: 0 0 10px var(--neon-red);
-            transition: 0.5s;
-        }
-        .dot.online {
-            background: var(--neon-green);
-            box-shadow: 0 0 15px var(--neon-green);
-        }
+        .connection-status { display: flex; align-items: center; gap: 15px; }
+        .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--neon-red); transition: 0.5s; }
+        .dot.online { background: var(--neon-green); box-shadow: 0 0 20px var(--neon-green); }
 
+        /* Main Layout */
         .main-container {
             display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 20px;
+            grid-template-columns: 1fr 380px;
+            gap: 25px;
             width: 100%;
             max-width: 1200px;
         }
 
+        /* Radar / Display Section */
         .canvas-section {
             background: #000;
-            border: 1px solid #333;
-            border-radius: 8px;
+            border: 2px solid #1a1a1a;
+            border-radius: 4px;
             position: relative;
-            overflow: hidden;
+            min-height: 500px;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 400px;
+            box-shadow: inset 0 0 50px rgba(0,0,0,1);
         }
-        canvas { image-rendering: pixelated; max-width: 100%; height: auto; }
 
+        #mediaDisplay {
+            max-width: 95%;
+            max-height: 95%;
+            z-index: 5;
+            display: none; /* يظهر عند استلام صور أو فيديو */
+        }
+
+        canvas { image-rendering: pixelated; position: absolute; z-index: 2; }
+
+        /* Chat Section */
         .chat-section {
             background: var(--panel-bg);
-            border: 1px solid var(--neon-blue);
-            border-radius: 8px;
+            border: 1px solid #222;
             display: flex;
             flex-direction: column;
-            height: 500px;
+            height: 550px;
+            border-top: 3px solid var(--neon-blue);
         }
-        .chat-header {
-            padding: 10px;
-            border-bottom: 1px solid #333;
-            font-size: 0.8rem;
-            color: var(--neon-blue);
-            text-align: center;
-        }
+
         #messages {
             flex-grow: 1;
             padding: 15px;
             overflow-y: auto;
-            font-family: monospace;
+            font-family: 'Consolas', monospace;
             font-size: 0.85rem;
-            color: var(--neon-green);
-        }
-        .chat-input-area {
-            padding: 10px;
-            border-top: 1px solid #333;
-            display: flex;
-            gap: 5px;
-        }
-        #msgInput {
-            flex-grow: 1;
-            background: #000;
-            border: 1px solid var(--neon-blue);
-            color: #fff;
-            padding: 8px;
-            border-radius: 4px;
-            outline: none;
+            background: rgba(0,0,0,0.3);
         }
 
+        .file-log { color: var(--neon-blue); border-left: 2px solid var(--neon-blue); padding-left: 10px; margin: 10px 0; }
+
+        /* Controls */
         .bottom-controls {
-            margin-top: 20px;
+            margin-top: 30px;
             display: flex;
-            gap: 15px;
-            width: 100%;
-            max-width: 1200px;
+            gap: 20px;
+            flex-wrap: wrap;
             justify-content: center;
         }
+
         .btn {
-            padding: 12px 25px;
-            background: transparent;
+            padding: 15px 35px;
+            background: #000;
             border: 1px solid var(--neon-blue);
             color: var(--neon-blue);
             cursor: pointer;
-            text-transform: uppercase;
             font-weight: bold;
-            border-radius: 4px;
+            letter-spacing: 1px;
             transition: 0.3s;
         }
-        .btn:hover:not(:disabled) { background: var(--neon-blue); color: #000; box-shadow: 0 0 15px var(--neon-blue); }
+
+        .btn:hover:not(:disabled) { background: var(--neon-blue); color: #000; box-shadow: 0 0 20px var(--neon-blue); }
         .btn-send { border-color: var(--neon-green); color: var(--neon-green); }
-        .btn-send:hover:not(:disabled) { background: var(--neon-green); color: #000; box-shadow: 0 0 15px var(--neon-green); }
-        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-send:hover:not(:disabled) { background: var(--neon-green); color: #000; box-shadow: 0 0 20px var(--neon-green); }
 
         #fileInput { display: none; }
-        .upload-lbl { cursor: pointer; border: 1px dashed #fff; padding: 12px 25px; border-radius: 4px; }
+        .upload-lbl { cursor: pointer; border: 1px solid #fff; padding: 15px 35px; display: inline-block; }
 
         .scan-line {
-            position: absolute;
-            width: 100%;
-            height: 1px;
-            background: rgba(0, 242, 255, 0.2);
-            top: 0;
-            left: 0;
-            animation: scan 3s linear infinite;
-            pointer-events: none;
+            position: absolute; width: 100%; height: 2px;
+            background: rgba(0, 242, 255, 0.1); top: 0; left: 0;
+            animation: scan 4s linear infinite; z-index: 10; pointer-events: none;
         }
         @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
     </style>
@@ -184,17 +148,17 @@
 
     <div class="dashboard">
         <div class="system-info">
-            <h2>QUP UNIFIED PROTOCOL</h2>
+            <h2>QUP UNIFIED CONSOLE v2.0</h2>
             <div id="rotaryCounter">CLOCK: 0000000000</div>
         </div>
 
         <div class="telemetry">
             <div id="progressStatus">0%</div>
-            <div style="font-size: 0.6rem;">STREAMING SYNC</div>
+            <div style="font-size: 0.7rem; color: #888;">SYNC RATIO</div>
         </div>
 
         <div class="connection-status">
-            <span id="statusText" style="font-size: 0.7rem;">OFFLINE</span>
+            <span id="statusText" style="font-size: 0.8rem;">DISCONNECTED</span>
             <div id="connDot" class="dot"></div>
         </div>
     </div>
@@ -202,78 +166,115 @@
     <div class="main-container">
         <div class="canvas-section">
             <div class="scan-line"></div>
-            <canvas id="matrixCanvas"></canvas>
+            <div id="mediaContainer" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+                <canvas id="matrixCanvas"></canvas>
+                <img id="imagePreview" style="max-width:90%; max-height:90%; display:none; border:1px solid var(--neon-blue); shadow: var(--border-glow);">
+                <video id="videoPreview" controls style="max-width:90%; max-height:90%; display:none; border:1px solid var(--neon-blue);"></video>
+            </div>
         </div>
 
         <div class="chat-section">
-            <div class="chat-header">SECURE DEEP-STREAM CHAT</div>
-            <div id="messages"></div>
-            <div class="chat-input-area">
-                <input type="text" id="msgInput" placeholder="اكتب رسالة نبضية...">
-                <button id="sendMsgBtn" class="btn" style="padding: 5px 10px;">بث</button>
+            <div id="messages">
+                <div style="color: #555;">> تهيئة بروتوكول الاستقبال... جاري الانتظار.</div>
+            </div>
+            <div style="padding: 10px; display: flex; gap: 5px; background: #111;">
+                <input type="text" id="msgInput" style="flex:1; background:#000; border:1px solid #333; color:white; padding:10px;" placeholder="رسالة نبضية...">
+                <button id="sendMsgBtn" class="btn" style="padding:10px 20px;">بث</button>
             </div>
         </div>
     </div>
 
     <div class="bottom-controls">
-        <label for="fileInput" class="upload-lbl">📁 اختيار مصفوفة/ملف</label>
+        <label for="fileInput" class="upload-lbl">📁 اختيار مصفوفة</label>
         <input type="file" id="fileInput">
-        
         <button id="sendBtn" class="btn btn-send" disabled>إطلاق النبضة الكاملة</button>
-        <button id="clearBtn" class="btn" onclick="location.reload()">تصفير شامل</button>
+        <button id="clearBtn" class="btn" onclick="location.reload()">تصفير الأنظمة</button>
     </div>
 
     <script type="module">
         import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
         
-        // --- التعديل الجوهري للاتصال برابليت ---
-        const socket = io("https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev", {
+        // الرابط الجديد للسيرفر المنقح
+        const socket = io("https://6cbd87ca-1712-4388-9d90-44f0853ce0ba-00-1e3zq6wdeyv28.worf.replit.dev/", {
             transports: ["websocket"],
             reconnection: true
-        }); 
+        });
         
         window.socket = socket;
 
         socket.on('connect', () => {
             document.getElementById('connDot').classList.add('online');
-            document.getElementById('statusText').innerText = 'ONLINE';
-            console.log("🚀 تم الربط بنجاح عبر بروتوكول النبض المباشر");
+            document.getElementById('statusText').innerText = 'SECURE LINK ACTIVE';
+            logToChat("تم الربط مع السيرفر المركزي بنجاح.");
         });
 
-        socket.on('disconnect', () => {
-            document.getElementById('connDot').classList.remove('online');
-            document.getElementById('statusText').innerText = 'OFFLINE';
+        // التعامل مع الملفات المرفوعة
+        const fileInput = document.getElementById('fileInput');
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            const fileType = file.type;
+
+            // منطق العرض الجغرافي (تلفاز vs دردشة)
+            if (fileType.startsWith('image/')) {
+                displayInTV('image', URL.createObjectURL(file));
+                logToChat(`تم تحميل صورة: ${file.name} (عرض على الرادار)`);
+            } else if (fileType.startsWith('video/')) {
+                displayInTV('video', URL.createObjectURL(file));
+                logToChat(`تم تحميل فيديو: ${file.name} (عرض على الرادار)`);
+            } else {
+                displayInTV('none'); // إخفاء الميديا
+                logToChat(`<div class="file-log">📦 ملف بيانات مكتشف: ${file.name}<br>الحجم: ${(file.size/1024).toFixed(2)} KB<br>النوع: ${fileType}</div>`);
+            }
         });
 
-        socket.on('connect_error', (err) => {
-            console.error("❌ خطأ في الاتصال بالسيرفر:", err.message);
-        });
+        function displayInTV(type, src) {
+            const img = document.getElementById('imagePreview');
+            const video = document.getElementById('videoPreview');
+            const canvas = document.getElementById('matrixCanvas');
+
+            img.style.display = 'none';
+            video.style.display = 'none';
+            canvas.style.opacity = '1';
+
+            if (type === 'image') {
+                img.src = src;
+                img.style.display = 'block';
+                canvas.style.opacity = '0.2';
+            } else if (type === 'video') {
+                video.src = src;
+                video.style.display = 'block';
+                video.play();
+                canvas.style.opacity = '0.2';
+            }
+        }
+
+        function logToChat(msg) {
+            const msgs = document.getElementById('messages');
+            msgs.innerHTML += `<div>> ${msg}</div>`;
+            msgs.scrollTop = msgs.scrollHeight;
+        }
 
         window.updateProgressPulse = (ratio) => {
-            const percent = Math.floor(ratio * 100);
-            document.getElementById('progressStatus').innerText = percent + "%";
+            document.getElementById('progressStatus').innerText = Math.floor(ratio * 100) + "%";
         };
 
         window.updateRotaryVisual = (tick, total) => {
-            const counter = document.getElementById('rotaryCounter');
-            if(counter) counter.innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
+            document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
-        const sendMsgBtn = document.getElementById('sendMsgBtn');
-        if (sendMsgBtn) {
-            sendMsgBtn.onclick = () => {
-                const input = document.getElementById('msgInput');
-                if(input.value && typeof window.injectTextMessage === 'function') {
-                    window.injectTextMessage(input.value);
-                    input.value = "";
-                } else {
-                    console.warn("⚠️ المحرك النبضي (Zied.js) لم يكتمل تحميله بعد.");
-                }
-            };
-        }
+        document.getElementById('sendMsgBtn').onclick = () => {
+            const input = document.getElementById('msgInput');
+            if(input.value && window.injectTextMessage) {
+                window.injectTextMessage(input.value);
+                logToChat(`<span style="color:var(--neon-green)">أنت:</span> ${input.value}`);
+                input.value = "";
+            }
+        };
     </script>
 
     <script type="module" src="Zied.js"></script>
-
 </body>
 </html>
