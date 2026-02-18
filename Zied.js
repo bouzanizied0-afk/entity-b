@@ -5,7 +5,7 @@ let virtualClock = 0;       // إبرة العداد الدوار المرجعي
 let currentGlobalSeed = 0;  // مفتاح التزامن الزمكاني
 
 // ربط محرك Socket.io (تأكد من وجود المكتبة في مشروعك)
-const socket = io("https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev", {
+const socket = io("https://6cbd87ca-1712-4388-9d90-44f0853ce0ba-00-1e3zq6wdeyv28.worf.replit.dev/", {
     transports: ["websocket"],
     reconnection: true
 });
