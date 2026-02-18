@@ -96,7 +96,7 @@ async function executeUniversalStream(rawData, seed, sid, name) {
            });
 
                 packet = "";
-                await new Promise(res => setTimeout(res, 30));
+                await new Promise(res => setTimeout(res, 200));
             }
         }
         if (packet || skipCount > 0) {
