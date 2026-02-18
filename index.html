@@ -46,7 +46,6 @@
         .system-info { text-align: right; }
         .system-info h2 { margin: 0; font-size: 1rem; color: var(--neon-blue); letter-spacing: 1px; }
 
-        /* العداد المرمز والنسبة المئوية */
         .telemetry {
             text-align: center;
             flex-grow: 1;
@@ -64,7 +63,6 @@
             opacity: 0.8;
         }
 
-        /* لمبة الاتصال */
         .connection-status {
             display: flex;
             align-items: center;
@@ -74,7 +72,7 @@
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: var(--neon-red); /* الافتراضي أحمر */
+            background: var(--neon-red);
             box-shadow: 0 0 10px var(--neon-red);
             transition: 0.5s;
         }
@@ -83,7 +81,6 @@
             box-shadow: 0 0 15px var(--neon-green);
         }
 
-        /* منطقة العرض والدردشة */
         .main-container {
             display: grid;
             grid-template-columns: 1fr 350px;
@@ -105,7 +102,6 @@
         }
         canvas { image-rendering: pixelated; max-width: 100%; height: auto; }
 
-        /* نافذة الدردشة */
         .chat-section {
             background: var(--panel-bg);
             border: 1px solid var(--neon-blue);
@@ -145,7 +141,6 @@
             outline: none;
         }
 
-        /* أزرار التحكم */
         .bottom-controls {
             margin-top: 20px;
             display: flex;
@@ -232,18 +227,24 @@
     <script type="module">
         import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
         
-        // تحديث لمبة الاتصال
-        const socket = io("http://127.0.0.1:3000");
+        // ربط المحرك بسيرفر ترمكس (تأكد أن ترمكس يعمل)
+        const socket = io("http://localhost:3000"); // استخدم localhost للاتصال الداخلي بالهاتف
+        
+        // جعل السوكيت متاحاً عالمياً لـ Zied.js
+        window.socket = socket;
+
         socket.on('connect', () => {
             document.getElementById('connDot').classList.add('online');
             document.getElementById('statusText').innerText = 'ONLINE';
+            console.log("🚀 تم الربط مع ترمكس بنجاح");
         });
+
         socket.on('disconnect', () => {
             document.getElementById('connDot').classList.remove('online');
             document.getElementById('statusText').innerText = 'OFFLINE';
         });
 
-        // تعريف الدوال المساعدة التي طلبها Zied.js للواجهة
+        // دوال تحديث الواجهة الموحدة
         window.updateProgressPulse = (ratio) => {
             const percent = Math.floor(ratio * 100);
             document.getElementById('progressStatus').innerText = percent + "%";
@@ -253,14 +254,12 @@
             document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
-        // تفعيل إرسال الرسائل عبر الدردشة
+        // إرسال الرسائل عبر الدردشة
         document.getElementById('sendMsgBtn').onclick = () => {
             const input = document.getElementById('msgInput');
             if(input.value && window.injectTextMessage) {
                 window.injectTextMessage(input.value);
-                const msgDiv = document.createElement('div');
-                msgDiv.innerText = ">> " + input.value;
-                document.getElementById('messages').appendChild(msgDiv);
+                // ملاحظة: العرض يتم برمجياً عند استقبال النبضة لضمان التزامن
                 input.value = "";
             }
         };
