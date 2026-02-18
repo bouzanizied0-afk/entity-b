@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUP Unified Console | مركز التحكم الموحد</title>
+    <title>QUP Unified Console | ziedzizou-7b74d</title>
     <style>
         :root {
             --neon-blue: #00f2ff;
@@ -79,14 +79,8 @@
             box-shadow: inset 0 0 50px rgba(0,0,0,1);
         }
 
-        #mediaDisplay {
-            max-width: 95%;
-            max-height: 95%;
-            z-index: 5;
-            display: none; /* يظهر عند استلام صور أو فيديو */
-        }
-
-        canvas { image-rendering: pixelated; position: absolute; z-index: 2; }
+        #mediaPreviewContainer { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
+        #imagePreview, #videoPreview { max-width: 95%; max-height: 95%; display: none; z-index: 5; border: 1px solid var(--neon-blue); }
 
         /* Chat Section */
         .chat-section {
@@ -158,7 +152,7 @@
         </div>
 
         <div class="connection-status">
-            <span id="statusText" style="font-size: 0.8rem;">DISCONNECTED</span>
+            <span id="statusText" style="font-size: 0.8rem;">INITIALIZING...</span>
             <div id="connDot" class="dot"></div>
         </div>
     </div>
@@ -166,16 +160,16 @@
     <div class="main-container">
         <div class="canvas-section">
             <div class="scan-line"></div>
-            <div id="mediaContainer" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
-                <canvas id="matrixCanvas"></canvas>
-                <img id="imagePreview" style="max-width:90%; max-height:90%; display:none; border:1px solid var(--neon-blue); shadow: var(--border-glow);">
-                <video id="videoPreview" controls style="max-width:90%; max-height:90%; display:none; border:1px solid var(--neon-blue);"></video>
+            <div id="mediaPreviewContainer">
+                <img id="imagePreview">
+                <video id="videoPreview" controls></video>
+                <div id="placeholderText" style="color: #222; font-size: 5rem; font-weight: 900; opacity: 0.1;">RADAR</div>
             </div>
         </div>
 
         <div class="chat-section">
             <div id="messages">
-                <div style="color: #555;">> تهيئة بروتوكول الاستقبال... جاري الانتظار.</div>
+                <div style="color: #555;">> نظام مزامنة Firebase جاهز...</div>
             </div>
             <div style="padding: 10px; display: flex; gap: 5px; background: #111;">
                 <input type="text" id="msgInput" style="flex:1; background:#000; border:1px solid #333; color:white; padding:10px;" placeholder="رسالة نبضية...">
@@ -192,84 +186,92 @@
     </div>
 
     <script type="module">
-        import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
-        
-        // الرابط الجديد للسيرفر المنقح
-        const socket = io("https://6cbd87ca-1712-4388-9d90-44f0853ce0ba-00-1e3zq6wdeyv28.worf.replit.dev/", {
-            transports: ["websocket"],
-            reconnection: true
-        });
-        
-        window.socket = socket;
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        socket.on('connect', () => {
-            document.getElementById('connDot').classList.add('online');
-            document.getElementById('statusText').innerText = 'SECURE LINK ACTIVE';
-            logToChat("تم الربط مع السيرفر المركزي بنجاح.");
-        });
+        // إعدادات Firebase الخاصة بك
+        const firebaseConfig = {
+            apiKey: "AIzaSyAZs0bb_t-bzMtaJqy_W_QDBSdQKHLEiD4",
+            authDomain: "ziedzizou-7b74d.firebaseapp.com",
+            databaseURL: "https://ziedzizou-7b74d-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "ziedzizou-7b74d",
+            storageBucket: "ziedzizou-7b74d.firebasestorage.app",
+            messagingSenderId: "937969676323",
+            appId: "1:937969676323:web:8c89472de068a2e6cd0196"
+        };
 
-        // التعامل مع الملفات المرفوعة
-        const fileInput = document.getElementById('fileInput');
-        fileInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const statusRef = ref(db, '.info/connected');
+        const streamRef = ref(db, 'universal_sync_stream');
 
-            const reader = new FileReader();
-            const fileType = file.type;
+        // الربط بالمتغيرات العالمية لملف Zied.js
+        window.db = db;
+        window.streamRef = streamRef;
+        window.fbSet = set;
+        window.fbOnValue = onValue;
 
-            // منطق العرض الجغرافي (تلفاز vs دردشة)
-            if (fileType.startsWith('image/')) {
-                displayInTV('image', URL.createObjectURL(file));
-                logToChat(`تم تحميل صورة: ${file.name} (عرض على الرادار)`);
-            } else if (fileType.startsWith('video/')) {
-                displayInTV('video', URL.createObjectURL(file));
-                logToChat(`تم تحميل فيديو: ${file.name} (عرض على الرادار)`);
+        // مراقبة حالة الاتصال (اللمبة الحمراء/الخضراء)
+        onValue(statusRef, (snapshot) => {
+            const dot = document.getElementById('connDot');
+            const statusText = document.getElementById('statusText');
+            if (snapshot.val() === true) {
+                dot.classList.add('online');
+                statusText.innerText = 'SECURE LINK ACTIVE';
+                statusText.style.color = 'var(--neon-green)';
+                logToChat("تم تفعيل بروتوكول الربط مع ziedzizou-7b74d.");
             } else {
-                displayInTV('none'); // إخفاء الميديا
-                logToChat(`<div class="file-log">📦 ملف بيانات مكتشف: ${file.name}<br>الحجم: ${(file.size/1024).toFixed(2)} KB<br>النوع: ${fileType}</div>`);
+                dot.classList.remove('online');
+                statusText.innerText = 'DISCONNECTED';
+                statusText.style.color = 'var(--neon-red)';
             }
         });
 
-        function displayInTV(type, src) {
-            const img = document.getElementById('imagePreview');
-            const video = document.getElementById('videoPreview');
-            const canvas = document.getElementById('matrixCanvas');
-
-            img.style.display = 'none';
-            video.style.display = 'none';
-            canvas.style.opacity = '1';
-
-            if (type === 'image') {
-                img.src = src;
-                img.style.display = 'block';
-                canvas.style.opacity = '0.2';
-            } else if (type === 'video') {
-                video.src = src;
-                video.style.display = 'block';
-                video.play();
-                canvas.style.opacity = '0.2';
-            }
-        }
-
-        function logToChat(msg) {
+        // دوال تحديث الواجهة الموجهة لـ Zied.js
+        window.logToChat = (msg) => {
             const msgs = document.getElementById('messages');
             msgs.innerHTML += `<div>> ${msg}</div>`;
             msgs.scrollTop = msgs.scrollHeight;
-        }
+        };
 
         window.updateProgressPulse = (ratio) => {
             document.getElementById('progressStatus').innerText = Math.floor(ratio * 100) + "%";
         };
 
-        window.updateRotaryVisual = (tick, total) => {
+        window.updateRotaryVisual = (tick) => {
             document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
+        // التعامل مع عرض الميديا على الرادار
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const imgPreview = document.getElementById('imagePreview');
+            const vidPreview = document.getElementById('videoPreview');
+            const placeholder = document.getElementById('placeholderText');
+
+            imgPreview.style.display = 'none';
+            vidPreview.style.display = 'none';
+            placeholder.style.display = 'none';
+
+            if (file.type.startsWith('image/')) {
+                imgPreview.src = URL.createObjectURL(file);
+                imgPreview.style.display = 'block';
+            } else if (file.type.startsWith('video/')) {
+                vidPreview.src = URL.createObjectURL(file);
+                vidPreview.style.display = 'block';
+            } else {
+                placeholder.style.display = 'block';
+            }
+        });
+
+        // زر إرسال الرسائل النصية
         document.getElementById('sendMsgBtn').onclick = () => {
             const input = document.getElementById('msgInput');
             if(input.value && window.injectTextMessage) {
                 window.injectTextMessage(input.value);
-                logToChat(`<span style="color:var(--neon-green)">أنت:</span> ${input.value}`);
+                logToChat(`<span style="color:var(--neon-green)">بث نصي:</span> ${input.value}`);
                 input.value = "";
             }
         };
