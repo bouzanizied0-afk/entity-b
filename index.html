@@ -227,10 +227,10 @@
     <script type="module">
         import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
         
-        // ربط المحرك بسيرفر ترمكس (تأكد أن ترمكس يعمل)
-        const socket = io("http://localhost:3000"); // استخدم localhost للاتصال الداخلي بالهاتف
+        // ربط المحرك بسيرفر ترمكس (المنفذ 3000 كما هو معتاد في Node.js)
+        const socket = io("http://localhost:3000"); 
         
-        // جعل السوكيت متاحاً عالمياً لـ Zied.js
+        // تصدير السوكيت للنطاق العالمي ليراه ملف Zied.js
         window.socket = socket;
 
         socket.on('connect', () => {
@@ -244,25 +244,31 @@
             document.getElementById('statusText').innerText = 'OFFLINE';
         });
 
-        // دوال تحديث الواجهة الموحدة
+        // دوال تحديث الواجهة الموحدة - جعلناها global لملف Zied.js
         window.updateProgressPulse = (ratio) => {
             const percent = Math.floor(ratio * 100);
             document.getElementById('progressStatus').innerText = percent + "%";
         };
 
         window.updateRotaryVisual = (tick, total) => {
-            document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
+            const counter = document.getElementById('rotaryCounter');
+            if(counter) counter.innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
-        // إرسال الرسائل عبر الدردشة
-        document.getElementById('sendMsgBtn').onclick = () => {
-            const input = document.getElementById('msgInput');
-            if(input.value && window.injectTextMessage) {
-                window.injectTextMessage(input.value);
-                // ملاحظة: العرض يتم برمجياً عند استقبال النبضة لضمان التزامن
-                input.value = "";
-            }
-        };
+        // معالجة إرسال الرسائل عبر استدعاء محرك Zied
+        const sendMsgBtn = document.getElementById('sendMsgBtn');
+        if (sendMsgBtn) {
+            sendMsgBtn.onclick = () => {
+                const input = document.getElementById('msgInput');
+                // التحقق من وجود دالة التشفير النبضي في Zied.js
+                if(input.value && typeof window.injectTextMessage === 'function') {
+                    window.injectTextMessage(input.value);
+                    input.value = "";
+                } else {
+                    console.warn("⚠️ المحرك النبضي (Zied.js) لم يكتمل تحميله بعد.");
+                }
+            };
+        }
     </script>
 
     <script type="module" src="Zied.js"></script>
