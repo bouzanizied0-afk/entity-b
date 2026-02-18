@@ -27,7 +27,6 @@
             overflow-x: hidden;
         }
 
-        /* لوحة القيادة العلوية */
         .dashboard {
             background: var(--panel-bg);
             border: 1px solid var(--neon-blue);
@@ -227,22 +226,27 @@
     <script type="module">
         import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
         
-        // --- تعديل مسار الرابط ليناسب Replit ---
-        // ملاحظة: إذا كان السيرفر على نفس الـ Repl، اترك الأقواس فارغة io()
-        // إذا كان السيرفر في Repl مختلف، ضع الرابط كاملاً بين علامات التنصيص
-        const socket = io(); 
+        // --- التعديل الجوهري للاتصال برابليت ---
+        const socket = io("https://c7c9c05e-7071-4908-9616-f6be44817257-00-2eyc5vot02n45.worf.replit.dev", {
+            transports: ["websocket"],
+            reconnection: true
+        }); 
         
         window.socket = socket;
 
         socket.on('connect', () => {
             document.getElementById('connDot').classList.add('online');
             document.getElementById('statusText').innerText = 'ONLINE';
-            console.log("🚀 تم الربط مع Replit بنجاح");
+            console.log("🚀 تم الربط بنجاح عبر بروتوكول النبض المباشر");
         });
 
         socket.on('disconnect', () => {
             document.getElementById('connDot').classList.remove('online');
             document.getElementById('statusText').innerText = 'OFFLINE';
+        });
+
+        socket.on('connect_error', (err) => {
+            console.error("❌ خطأ في الاتصال بالسيرفر:", err.message);
         });
 
         window.updateProgressPulse = (ratio) => {
