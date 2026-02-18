@@ -25,7 +25,7 @@
         .btn { padding: 15px 35px; background: #000; border: 1px solid var(--neon-blue); color: var(--neon-blue); cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn:hover:not(:disabled) { background: var(--neon-blue); color: #000; }
         .btn:disabled { opacity: 0.3; cursor: not-allowed; }
-        #imagePreview { max-width: 90%; max-height: 90%; display: none; border: 1px solid var(--neon-blue); box-shadow: 0 0 10px var(--neon-blue); }
+        #displayScreen { max-width: 95%; max-height: 95%; display: none; border: 1px solid var(--neon-blue); box-shadow: 0 0 20px rgba(0, 242, 255, 0.5); }
         .bottom-controls { margin-top: 20px; display: flex; gap: 20px; align-items: center; }
     </style>
 </head>
@@ -47,7 +47,8 @@
 
     <div class="main-container">
         <div class="canvas-section">
-            <img id="imagePreview">
+            <img id="displayScreen">
+            <video id="videoScreen" controls style="display:none; max-width:95%;"></video>
             <div id="placeholderText" style="color: #111; font-size: 5rem; font-weight: 900; user-select: none;">RADAR</div>
         </div>
         <div class="chat-section">
@@ -63,11 +64,13 @@
         <label for="fileInput" style="cursor:pointer; border:1px solid #fff; padding:15px; font-weight:bold;">📁 اختيار مصفوفة</label>
         <input type="file" id="fileInput" style="display:none;">
         <button id="sendBtn" class="btn" style="border-color:var(--neon-green); color:var(--neon-green);" disabled>إطلاق النبضة</button>
+        <button id="clearCloudBtn" class="btn" style="border-color:var(--neon-red); color:var(--neon-red);">تطهير السحابة</button>
     </div>
 
     <script type="module">
+        // أضفنا remove هنا
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAZs0bb_t-bzMtaJqy_W_QDBSdQKHLEiD4",
@@ -83,7 +86,6 @@
         const db = getDatabase(app);
         const pulseRef = ref(db, 'qup_pulses');
 
-        // --- الجسر لربط Zied.js بـ Firebase ---
         window.fbSet = set;
         window.streamRef = pulseRef;
 
@@ -108,50 +110,65 @@
             if (snap.val() === true) {
                 dot.classList.add('online');
                 txt.innerText = "ZIEDZIZOU LINK ACTIVE";
-                window.logToChat("<span style='color:var(--neon-green)'>تم تفعيل الرابط مع Ziedzizou.</span>");
+                window.logToChat("<span style='color:var(--neon-green)'>تم تفعيل القناة الكونية.</span>");
             } else {
                 dot.classList.remove('online');
                 txt.innerText = "OFFLINE";
             }
         });
 
-        // الاستماع للنبضات الواردة من الطرف الآخر
         onValue(pulseRef, (snapshot) => {
             const data = snapshot.val();
-            if (data && window.processIncomingPulse) {
+            // إذا كانت البيانات محذوفة من فيرباس (null)، صفر الواجهة تلقائياً للطرفين
+            if (!data) {
+                document.getElementById('progressStatus').innerText = "0%";
+                document.getElementById('displayScreen').style.display = 'none';
+                document.getElementById('placeholderText').style.display = 'block';
+                return;
+            }
+            if (window.processIncomingPulse) {
                 window.processIncomingPulse(data);
             }
         });
 
-        // اختيار الملف
-        document.getElementById('fileInput').onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            document.getElementById('sendBtn').disabled = false;
-            window.logToChat(`جاهز لبث: ${file.name} (${(file.size/1024).toFixed(2)} KB)`);
-            
-            // معاينة الصور
-            if (file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    const img = document.getElementById('imagePreview');
-                    img.src = ev.target.result;
-                    img.style.display = 'block';
-                    document.getElementById('placeholderText').style.display = 'none';
-                };
-                reader.readAsDataURL(file);
+        // برمجة زر تطهير السحابة
+        document.getElementById('clearCloudBtn').onclick = async () => {
+            try {
+                // حذف البيانات من فيرباس تماماً
+                await remove(pulseRef);
+                
+                // تنظيف الواجهة المحلية
+                document.getElementById('displayScreen').src = "";
+                document.getElementById('displayScreen').style.display = 'none';
+                document.getElementById('placeholderText').style.display = 'block';
+                document.getElementById('messages').innerHTML = "";
+                document.getElementById('rotaryCounter').innerText = "CLOCK: 0000000000";
+                
+                window.logToChat("<span style='color:var(--neon-red)'>🚨 تم حذف المصفوفة نهائياً من السحابة وتصفير الرادار.</span>");
+            } catch (e) {
+                window.logToChat("❌ خطأ في عملية الحذف: " + e.message);
             }
         };
 
-        // زر إطلاق النبضة - يرسل إشارة البدء لـ Zied.js
         document.getElementById('sendBtn').onclick = () => {
-            // نقوم بتشغيل دالة الإرسال يدوياً من خلال تفعيل حدث change مرة أخرى أو نداء مباشر
-            const event = new Event('change');
-            document.getElementById('fileInput').dispatchEvent(event);
-            window.logToChat("<span style='color:var(--neon-blue)'>بدأ تفتيت المصفوفة وبث الموجات...</span>");
+            const fileInput = document.getElementById('fileInput');
+            if (window.QUP_Source && fileInput.files[0]) {
+                window.logToChat("<span style='color:var(--neon-blue)'>جاري تفتيت الكتلة وإطلاق النبضات...</span>");
+                window.QUP_Source.transmit(fileInput.files[0]);
+            }
+        };
+
+        document.getElementById('fileInput').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('sendBtn').disabled = false;
+                window.logToChat(`الملف جاهز: ${file.name}`);
+            }
         };
     </script>
 
-    <script type="module" src="Zied.js"></script>
+    <script src="Mouhark.js"></script>
+    <script src="Moursel.js"></script>
+    <script src="Mostaqbel.js"></script>
 </body>
 </html>
