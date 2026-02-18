@@ -1,16 +1,14 @@
-// --- [0. قناة الاتصال الموحدة] ---
-import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
-
-// الربط المباشر بنفس أسلوب v1 لضمان المصافحة الفورية
-const socket = io("http://127.0.0.1:3000"); 
 
 // --- [1. الحالة العالمية الموحدة: خزان الذاكرة والنبض] ---
-let fileBuffer = null;      
-let lastSessionID = null;   
-let virtualClock = 0;       
-let currentGlobalSeed = 0;  
+let fileBuffer = null;      // الجسر المادي لتخزين البايتات
+let lastSessionID = null;   // معرف الجلسة لضمان عدم تداخل البيانات
+let virtualClock = 0;       // إبرة العداد الدوار المرجعية
+let currentGlobalSeed = 0;  // مفتاح التزامن الزمكاني
+
+const socket = window.socket; // ✅ استخدم الاتصال العالمي الموحد
 
 // --- [2. النواة الحسابية: البوصلة والمحاسب] ---
+
 function getSpatioTemporalByte(tick, seed) {
     const compositeWave = (
         Math.sin(tick * 0.05 + seed) + 
@@ -38,6 +36,7 @@ function countPulses(packet) {
 }
 
 // --- [3. المعمار الباني: وظيفة الـ Render] ---
+
 function render(clk, step, seed, byteValue) {
     const offset = clk * step;
     if (!fileBuffer || offset >= fileBuffer.length) return;
@@ -48,14 +47,14 @@ function render(clk, step, seed, byteValue) {
         fileBuffer[offset] = byteValue;
     }
 
-    // تحديث الواجهة والعداد الدوار
-    if (clk % 500 === 0) { 
-        if (window.updateProgressPulse) window.updateProgressPulse(offset / fileBuffer.length);
-        if (window.updateRotaryVisual) window.updateRotaryVisual(clk, fileBuffer.length);
+    // تحديث الواجهة عند كل 1000 نبضة لضمان الأداء
+    if (clk % 1000 === 0) {
+        updateProgressPulse(offset / fileBuffer.length);
     }
 }
 
 // --- [4. بوابة الدخول: مستقبل الملفات والرسائل] ---
+
 document.getElementById('fileInput').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -65,10 +64,9 @@ document.getElementById('fileInput').onchange = async (e) => {
     const sessionID = Date.now();
     currentGlobalSeed = Math.random(); 
 
-    console.log(`📡 استيعاب مادة: ${file.name} | الحجم: ${rawData.length}`);
+    console.log(`📡 استيعاب ملف: ${file.name} | الحجم: ${rawData.length}`);
 
-    // إشارة الحجز والتمهيد للسيرفر
-    socket.emit('qup_stream_init', { 
+    socket.emit('universal_stream_init', { 
         name: file.name, total: rawData.length, sid: sessionID, seed: currentGlobalSeed 
     });
 
@@ -77,18 +75,17 @@ document.getElementById('fileInput').onchange = async (e) => {
     sendBtn.onclick = () => executeUniversalStream(rawData, currentGlobalSeed, sessionID);
 };
 
+// حقن الرسائل النصية كنبضات
 window.injectTextMessage = (text) => {
     const encoder = new TextEncoder();
     const textData = encoder.encode(text);
-    const sid = Date.now();
-    const seed = Math.random();
-    socket.emit('qup_stream_init', { name: "TextMsg", total: textData.length, sid: sid, seed: seed });
-    executeUniversalStream(textData, seed, sid);
+    executeUniversalStream(textData, Math.random(), Date.now());
 };
 
 // --- [5. المحلل الطبقي: محرك بث البايتات] ---
+
 async function executeUniversalStream(rawData, seed, sid) {
-    const layers = [8, 4, 2, 1]; 
+    const layers = [8, 4, 2, 1];
     const threshold = 5;
 
     for (let step of layers) {
@@ -111,52 +108,57 @@ async function executeUniversalStream(rawData, seed, sid) {
 
             if (packet.length > 8000) {
                 if (skipCount > 0) { packet += "S" + skipCount + "."; skipCount = 0; }
-                socket.emit('qup_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
+                socket.emit('universal_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
                 packet = "";
-                await new Promise(res => setTimeout(res, 0)); 
+                await new Promise(res => setTimeout(res, 0));
             }
         }
         if (packet || skipCount > 0) {
             if (skipCount > 0) packet += "S" + skipCount + ".";
-            socket.emit('qup_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
+            socket.emit('universal_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
         }
     }
 }
 
 // --- [6. المترجم الشامل: استقبال وإعادة بناء المادة] ---
-// تم تعديل اسم الحدث إلى qup_receive ليطابق بروتوكول v1 الناجح
-socket.on('qup_receive', (data) => {
+
+socket.on('universal_receive', (data) => {
     if (!data || !data.d) return;
 
     if (data.sid !== lastSessionID) {
         fileBuffer = new Uint8Array(new SharedArrayBuffer(data.total));
         lastSessionID = data.sid;
         virtualClock = 0;
-        console.log("🌀 تم فتح القناة الزمكانية لاستقبال مادة جديدة...");
     }
 
     const raw = data.d;
     const step = data.step;
-    let clk = data.c - countPulses(raw); 
-    
+    let currentTick = data.c - countPulses(raw); 
     let i = 0;
+
     while (i < raw.length) {
         if (raw[i] === "S") {
             let end = raw.indexOf(".", i);
             let count = parseInt(raw.substring(i + 1, end));
             for (let s = 0; s < count; s++) {
-                render(clk + s, step, data.seed, -1);
+                render(currentTick + s, step, data.seed, -1);
             }
-            clk += count;
+            currentTick += count;
             i = end + 1;
         } 
         else if (raw[i] === "B") {
             const byteValue = raw.charCodeAt(i + 1) - 0x4E00;
-            render(clk, step, data.seed, byteValue);
-            clk++;
+            render(currentTick, step, data.seed, byteValue);
+            currentTick++;
             i += 2;
         } 
         else i++;
     }
-    virtualClock = clk;
+    virtualClock = currentTick;
 });
+
+// --- [دوال مساعدة للواجهة - يجب تعريفها حسب تصميمك] ---
+function updateProgressPulse(ratio) { /* تحديث شريط التقدم */ }
+function updateRotaryVisual(tick, total) { /* تحديث العداد الدوار */ }
+function triggerLayerUpdate(buffer, step) { /* معالجة الملف عند كل طبقة */ }
+
