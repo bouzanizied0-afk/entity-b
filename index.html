@@ -227,16 +227,17 @@
     <script type="module">
         import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
         
-        // ربط المحرك بسيرفر ترمكس (المنفذ 3000 كما هو معتاد في Node.js)
-        const socket = io("http://localhost:3000"); 
+        // --- تعديل مسار الرابط ليناسب Replit ---
+        // ملاحظة: إذا كان السيرفر على نفس الـ Repl، اترك الأقواس فارغة io()
+        // إذا كان السيرفر في Repl مختلف، ضع الرابط كاملاً بين علامات التنصيص
+        const socket = io(); 
         
-        // تصدير السوكيت للنطاق العالمي ليراه ملف Zied.js
         window.socket = socket;
 
         socket.on('connect', () => {
             document.getElementById('connDot').classList.add('online');
             document.getElementById('statusText').innerText = 'ONLINE';
-            console.log("🚀 تم الربط مع ترمكس بنجاح");
+            console.log("🚀 تم الربط مع Replit بنجاح");
         });
 
         socket.on('disconnect', () => {
@@ -244,7 +245,6 @@
             document.getElementById('statusText').innerText = 'OFFLINE';
         });
 
-        // دوال تحديث الواجهة الموحدة - جعلناها global لملف Zied.js
         window.updateProgressPulse = (ratio) => {
             const percent = Math.floor(ratio * 100);
             document.getElementById('progressStatus').innerText = percent + "%";
@@ -255,12 +255,10 @@
             if(counter) counter.innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
-        // معالجة إرسال الرسائل عبر استدعاء محرك Zied
         const sendMsgBtn = document.getElementById('sendMsgBtn');
         if (sendMsgBtn) {
             sendMsgBtn.onclick = () => {
                 const input = document.getElementById('msgInput');
-                // التحقق من وجود دالة التشفير النبضي في Zied.js
                 if(input.value && typeof window.injectTextMessage === 'function') {
                     window.injectTextMessage(input.value);
                     input.value = "";
