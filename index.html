@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QUP Unified Console | ziedzizou-7b74d</title>
-    <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
             --neon-blue: #00f2ff;
@@ -14,63 +13,62 @@
             --panel-bg: rgba(10, 10, 15, 0.9);
             --border-glow: 0 0 15px rgba(0, 242, 255, 0.3);
         }
-        body { background: var(--dark-bg); color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        body { background: var(--dark-bg); color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; overflow-x: hidden; }
         .dashboard { background: var(--panel-bg); border: 1px solid var(--neon-blue); padding: 15px 30px; border-radius: 4px; box-shadow: var(--border-glow); width: 100%; max-width: 1100px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-        .telemetry #progressStatus { font-size: 2rem; color: var(--neon-green); text-shadow: 0 0 10px var(--neon-green); font-weight: 900; }
+        .telemetry #progressStatus { font-size: 2.5rem; color: var(--neon-green); text-shadow: 0 0 10px var(--neon-green); font-weight: 900; }
         .main-container { display: grid; grid-template-columns: 1fr 380px; gap: 25px; width: 100%; max-width: 1200px; }
-        .canvas-section { background: #000; border: 2px solid #1a1a1a; border-radius: 4px; position: relative; min-height: 500px; display: flex; align-items: center; justify-content: center; }
+        .canvas-section { background: #000; border: 2px solid #1a1a1a; border-radius: 4px; position: relative; min-height: 500px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         .chat-section { background: var(--panel-bg); border: 1px solid #222; display: flex; flex-direction: column; height: 550px; border-top: 3px solid var(--neon-blue); }
-        #messages { flex-grow: 1; padding: 15px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.85rem; background: rgba(0,0,0,0.3); }
-        .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--neon-red); }
+        #messages { flex-grow: 1; padding: 15px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.85rem; background: rgba(0,0,0,0.3); color: #aaa; }
+        .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--neon-red); transition: 0.3s; }
         .dot.online { background: var(--neon-green); box-shadow: 0 0 20px var(--neon-green); }
-        .btn { padding: 15px 35px; background: #000; border: 1px solid var(--neon-blue); color: var(--neon-blue); cursor: pointer; font-weight: bold; }
-        #imagePreview, #videoPreview { max-width: 95%; max-height: 95%; display: none; border: 1px solid var(--neon-blue); }
+        .btn { padding: 15px 35px; background: #000; border: 1px solid var(--neon-blue); color: var(--neon-blue); cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn:hover:not(:disabled) { background: var(--neon-blue); color: #000; }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        #imagePreview { max-width: 90%; max-height: 90%; display: none; border: 1px solid var(--neon-blue); box-shadow: 0 0 10px var(--neon-blue); }
+        .bottom-controls { margin-top: 20px; display: flex; gap: 20px; align-items: center; }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         <div class="system-info">
-            <h2>QUP CONSOLE | ZIEDZIZOU</h2>
-            <div id="rotaryCounter">CLOCK: 0000000000</div>
+            <h2 style="margin:0; color:var(--neon-blue);">QUP CONSOLE | ZIEDZIZOU</h2>
+            <div id="rotaryCounter" style="font-family:monospace; letter-spacing:2px;">CLOCK: 0000000000</div>
         </div>
         <div class="telemetry">
             <div id="progressStatus">0%</div>
         </div>
-        <div class="connection-status">
-            <span id="statusText">FIREBASE SYNC...</span>
+        <div class="connection-status" style="text-align:left;">
+            <div id="statusText" style="font-size:0.7rem; margin-bottom:5px;">DISCONNECTED</div>
             <div id="connDot" class="dot"></div>
         </div>
     </div>
 
     <div class="main-container">
         <div class="canvas-section">
-            <div id="mediaPreviewContainer">
-                <img id="imagePreview">
-                <video id="videoPreview" controls></video>
-                <div id="placeholderText" style="color: #222; font-size: 5rem; font-weight: 900; opacity: 0.1;">RADAR</div>
-            </div>
+            <img id="imagePreview">
+            <div id="placeholderText" style="color: #111; font-size: 5rem; font-weight: 900; user-select: none;">RADAR</div>
         </div>
         <div class="chat-section">
             <div id="messages"></div>
-            <div style="padding: 10px; background: #111; display: flex;">
-                <input type="text" id="msgInput" style="flex:1; background:#000; color:#fff; border:1px solid #333; padding:10px;">
-                <button id="sendMsgBtn" class="btn">بث</button>
+            <div style="padding: 10px; background: #111; display: flex; gap:5px;">
+                <input type="text" id="msgInput" placeholder="Enter Command..." style="flex:1; background:#000; color:var(--neon-green); border:1px solid #333; padding:10px; outline:none;">
+                <button id="sendMsgBtn" class="btn" style="padding:10px 20px;">بث</button>
             </div>
         </div>
     </div>
 
     <div class="bottom-controls">
-        <label for="fileInput" style="cursor:pointer; border:1px solid #fff; padding:15px;">📁 اختيار مصفوفة</label>
+        <label for="fileInput" style="cursor:pointer; border:1px solid #fff; padding:15px; font-weight:bold;">📁 اختيار مصفوفة</label>
         <input type="file" id="fileInput" style="display:none;">
         <button id="sendBtn" class="btn" style="border-color:var(--neon-green); color:var(--neon-green);" disabled>إطلاق النبضة</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // إعداداتك التي أرسلتها (Ziedzizou)
         const firebaseConfig = {
             apiKey: "AIzaSyAZs0bb_t-bzMtaJqy_W_QDBSdQKHLEiD4",
             authDomain: "ziedzizou-7b74d.firebaseapp.com",
@@ -83,12 +81,16 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const pulseRef = ref(db, 'qup_pulses'); // القناة التي ستبث عبرها النبضات
+        const pulseRef = ref(db, 'qup_pulses');
 
-        // دوال عالمية لملف Zied.js
+        // --- الجسر لربط Zied.js بـ Firebase ---
+        window.fbSet = set;
+        window.streamRef = pulseRef;
+
         window.logToChat = (msg) => {
             const m = document.getElementById('messages');
-            m.innerHTML += `<div>> ${msg}</div>`;
+            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            m.innerHTML += `<div style="margin-bottom:5px;"><span style="color:#555;">[${time}]</span> > ${msg}</div>`;
             m.scrollTop = m.scrollHeight;
         };
 
@@ -100,30 +102,53 @@
             document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
-        // مراقبة حالة الاتصال بـ Firebase
         onValue(ref(db, '.info/connected'), (snap) => {
             const dot = document.getElementById('connDot');
+            const txt = document.getElementById('statusText');
             if (snap.val() === true) {
                 dot.classList.add('online');
-                document.getElementById('statusText').innerText = "ZIEDZIZOU LINK ACTIVE";
-                window.logToChat("متصل بنجاح بقاعدة بيانات Ziedzizou.");
+                txt.innerText = "ZIEDZIZOU LINK ACTIVE";
+                window.logToChat("<span style='color:var(--neon-green)'>تم تفعيل الرابط مع Ziedzizou.</span>");
+            } else {
+                dot.classList.remove('online');
+                txt.innerText = "OFFLINE";
             }
         });
 
-        // استلام النبضات من Firebase (بديل للسوكيت)
+        // الاستماع للنبضات الواردة من الطرف الآخر
         onValue(pulseRef, (snapshot) => {
             const data = snapshot.val();
             if (data && window.processIncomingPulse) {
-                window.processIncomingPulse(data); // دالة سنعرفها في Zied.js
+                window.processIncomingPulse(data);
             }
         });
 
-        // اختيار الملف والمعاينة
+        // اختيار الملف
         document.getElementById('fileInput').onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
             document.getElementById('sendBtn').disabled = false;
-            window.logToChat(`تم تحميل: ${file.name}`);
+            window.logToChat(`جاهز لبث: ${file.name} (${(file.size/1024).toFixed(2)} KB)`);
+            
+            // معاينة الصور
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = document.getElementById('imagePreview');
+                    img.src = ev.target.result;
+                    img.style.display = 'block';
+                    document.getElementById('placeholderText').style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        // زر إطلاق النبضة - يرسل إشارة البدء لـ Zied.js
+        document.getElementById('sendBtn').onclick = () => {
+            // نقوم بتشغيل دالة الإرسال يدوياً من خلال تفعيل حدث change مرة أخرى أو نداء مباشر
+            const event = new Event('change');
+            document.getElementById('fileInput').dispatchEvent(event);
+            window.logToChat("<span style='color:var(--neon-blue)'>بدأ تفتيت المصفوفة وبث الموجات...</span>");
         };
     </script>
 
