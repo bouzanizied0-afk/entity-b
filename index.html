@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QUP Unified Console | ziedzizou-7b74d</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
             --neon-blue: #00f2ff;
@@ -13,183 +14,63 @@
             --panel-bg: rgba(10, 10, 15, 0.9);
             --border-glow: 0 0 15px rgba(0, 242, 255, 0.3);
         }
-
-        body {
-            background: var(--dark-bg);
-            background-image: radial-gradient(circle at center, #111 0%, #050505 100%);
-            color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-            overflow-x: hidden;
-        }
-
-        /* Dashboard Header */
-        .dashboard {
-            background: var(--panel-bg);
-            border: 1px solid var(--neon-blue);
-            padding: 15px 30px;
-            border-radius: 4px;
-            box-shadow: var(--border-glow);
-            width: 100%;
-            max-width: 1100px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-            border-right: 5px solid var(--neon-blue);
-        }
-
-        .system-info h2 { margin: 0; font-size: 1.2rem; color: var(--neon-blue); letter-spacing: 2px; }
-        #rotaryCounter { font-family: 'Courier New', monospace; color: var(--neon-blue); font-size: 0.9rem; margin-top: 5px; }
-
-        .telemetry #progressStatus {
-            font-size: 2rem;
-            color: var(--neon-green);
-            text-shadow: 0 0 10px var(--neon-green);
-            font-weight: 900;
-        }
-
-        .connection-status { display: flex; align-items: center; gap: 15px; }
-        .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--neon-red); transition: 0.5s; }
+        body { background: var(--dark-bg); color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .dashboard { background: var(--panel-bg); border: 1px solid var(--neon-blue); padding: 15px 30px; border-radius: 4px; box-shadow: var(--border-glow); width: 100%; max-width: 1100px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+        .telemetry #progressStatus { font-size: 2rem; color: var(--neon-green); text-shadow: 0 0 10px var(--neon-green); font-weight: 900; }
+        .main-container { display: grid; grid-template-columns: 1fr 380px; gap: 25px; width: 100%; max-width: 1200px; }
+        .canvas-section { background: #000; border: 2px solid #1a1a1a; border-radius: 4px; position: relative; min-height: 500px; display: flex; align-items: center; justify-content: center; }
+        .chat-section { background: var(--panel-bg); border: 1px solid #222; display: flex; flex-direction: column; height: 550px; border-top: 3px solid var(--neon-blue); }
+        #messages { flex-grow: 1; padding: 15px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.85rem; background: rgba(0,0,0,0.3); }
+        .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--neon-red); }
         .dot.online { background: var(--neon-green); box-shadow: 0 0 20px var(--neon-green); }
-
-        /* Main Layout */
-        .main-container {
-            display: grid;
-            grid-template-columns: 1fr 380px;
-            gap: 25px;
-            width: 100%;
-            max-width: 1200px;
-        }
-
-        /* Radar / Display Section */
-        .canvas-section {
-            background: #000;
-            border: 2px solid #1a1a1a;
-            border-radius: 4px;
-            position: relative;
-            min-height: 500px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: inset 0 0 50px rgba(0,0,0,1);
-        }
-
-        #mediaPreviewContainer { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
-        #imagePreview, #videoPreview { max-width: 95%; max-height: 95%; display: none; z-index: 5; border: 1px solid var(--neon-blue); }
-
-        /* Chat Section */
-        .chat-section {
-            background: var(--panel-bg);
-            border: 1px solid #222;
-            display: flex;
-            flex-direction: column;
-            height: 550px;
-            border-top: 3px solid var(--neon-blue);
-        }
-
-        #messages {
-            flex-grow: 1;
-            padding: 15px;
-            overflow-y: auto;
-            font-family: 'Consolas', monospace;
-            font-size: 0.85rem;
-            background: rgba(0,0,0,0.3);
-        }
-
-        .file-log { color: var(--neon-blue); border-left: 2px solid var(--neon-blue); padding-left: 10px; margin: 10px 0; }
-
-        /* Controls */
-        .bottom-controls {
-            margin-top: 30px;
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .btn {
-            padding: 15px 35px;
-            background: #000;
-            border: 1px solid var(--neon-blue);
-            color: var(--neon-blue);
-            cursor: pointer;
-            font-weight: bold;
-            letter-spacing: 1px;
-            transition: 0.3s;
-        }
-
-        .btn:hover:not(:disabled) { background: var(--neon-blue); color: #000; box-shadow: 0 0 20px var(--neon-blue); }
-        .btn-send { border-color: var(--neon-green); color: var(--neon-green); }
-        .btn-send:hover:not(:disabled) { background: var(--neon-green); color: #000; box-shadow: 0 0 20px var(--neon-green); }
-
-        #fileInput { display: none; }
-        .upload-lbl { cursor: pointer; border: 1px solid #fff; padding: 15px 35px; display: inline-block; }
-
-        .scan-line {
-            position: absolute; width: 100%; height: 2px;
-            background: rgba(0, 242, 255, 0.1); top: 0; left: 0;
-            animation: scan 4s linear infinite; z-index: 10; pointer-events: none;
-        }
-        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        .btn { padding: 15px 35px; background: #000; border: 1px solid var(--neon-blue); color: var(--neon-blue); cursor: pointer; font-weight: bold; }
+        #imagePreview, #videoPreview { max-width: 95%; max-height: 95%; display: none; border: 1px solid var(--neon-blue); }
     </style>
 </head>
 <body>
 
     <div class="dashboard">
         <div class="system-info">
-            <h2>QUP UNIFIED CONSOLE v2.0</h2>
+            <h2>QUP CONSOLE | ZIEDZIZOU</h2>
             <div id="rotaryCounter">CLOCK: 0000000000</div>
         </div>
-
         <div class="telemetry">
             <div id="progressStatus">0%</div>
-            <div style="font-size: 0.7rem; color: #888;">SYNC RATIO</div>
         </div>
-
         <div class="connection-status">
-            <span id="statusText" style="font-size: 0.8rem;">INITIALIZING...</span>
+            <span id="statusText">FIREBASE SYNC...</span>
             <div id="connDot" class="dot"></div>
         </div>
     </div>
 
     <div class="main-container">
         <div class="canvas-section">
-            <div class="scan-line"></div>
             <div id="mediaPreviewContainer">
                 <img id="imagePreview">
                 <video id="videoPreview" controls></video>
                 <div id="placeholderText" style="color: #222; font-size: 5rem; font-weight: 900; opacity: 0.1;">RADAR</div>
             </div>
         </div>
-
         <div class="chat-section">
-            <div id="messages">
-                <div style="color: #555;">> نظام مزامنة Firebase جاهز...</div>
-            </div>
-            <div style="padding: 10px; display: flex; gap: 5px; background: #111;">
-                <input type="text" id="msgInput" style="flex:1; background:#000; border:1px solid #333; color:white; padding:10px;" placeholder="رسالة نبضية...">
-                <button id="sendMsgBtn" class="btn" style="padding:10px 20px;">بث</button>
+            <div id="messages"></div>
+            <div style="padding: 10px; background: #111; display: flex;">
+                <input type="text" id="msgInput" style="flex:1; background:#000; color:#fff; border:1px solid #333; padding:10px;">
+                <button id="sendMsgBtn" class="btn">بث</button>
             </div>
         </div>
     </div>
 
     <div class="bottom-controls">
-        <label for="fileInput" class="upload-lbl">📁 اختيار مصفوفة</label>
-        <input type="file" id="fileInput">
-        <button id="sendBtn" class="btn btn-send" disabled>إطلاق النبضة الكاملة</button>
-        <button id="clearBtn" class="btn" onclick="location.reload()">تصفير الأنظمة</button>
+        <label for="fileInput" style="cursor:pointer; border:1px solid #fff; padding:15px;">📁 اختيار مصفوفة</label>
+        <input type="file" id="fileInput" style="display:none;">
+        <button id="sendBtn" class="btn" style="border-color:var(--neon-green); color:var(--neon-green);" disabled>إطلاق النبضة</button>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // إعدادات Firebase الخاصة بك
+        // إعداداتك التي أرسلتها (Ziedzizou)
         const firebaseConfig = {
             apiKey: "AIzaSyAZs0bb_t-bzMtaJqy_W_QDBSdQKHLEiD4",
             authDomain: "ziedzizou-7b74d.firebaseapp.com",
@@ -202,36 +83,13 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const statusRef = ref(db, '.info/connected');
-        const streamRef = ref(db, 'universal_sync_stream');
+        const pulseRef = ref(db, 'qup_pulses'); // القناة التي ستبث عبرها النبضات
 
-        // الربط بالمتغيرات العالمية لملف Zied.js
-        window.db = db;
-        window.streamRef = streamRef;
-        window.fbSet = set;
-        window.fbOnValue = onValue;
-
-        // مراقبة حالة الاتصال (اللمبة الحمراء/الخضراء)
-        onValue(statusRef, (snapshot) => {
-            const dot = document.getElementById('connDot');
-            const statusText = document.getElementById('statusText');
-            if (snapshot.val() === true) {
-                dot.classList.add('online');
-                statusText.innerText = 'SECURE LINK ACTIVE';
-                statusText.style.color = 'var(--neon-green)';
-                logToChat("تم تفعيل بروتوكول الربط مع ziedzizou-7b74d.");
-            } else {
-                dot.classList.remove('online');
-                statusText.innerText = 'DISCONNECTED';
-                statusText.style.color = 'var(--neon-red)';
-            }
-        });
-
-        // دوال تحديث الواجهة الموجهة لـ Zied.js
+        // دوال عالمية لملف Zied.js
         window.logToChat = (msg) => {
-            const msgs = document.getElementById('messages');
-            msgs.innerHTML += `<div>> ${msg}</div>`;
-            msgs.scrollTop = msgs.scrollHeight;
+            const m = document.getElementById('messages');
+            m.innerHTML += `<div>> ${msg}</div>`;
+            m.scrollTop = m.scrollHeight;
         };
 
         window.updateProgressPulse = (ratio) => {
@@ -242,38 +100,30 @@
             document.getElementById('rotaryCounter').innerText = `CLOCK: ${tick.toString().padStart(10, '0')}`;
         };
 
-        // التعامل مع عرض الميديا على الرادار
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const imgPreview = document.getElementById('imagePreview');
-            const vidPreview = document.getElementById('videoPreview');
-            const placeholder = document.getElementById('placeholderText');
-
-            imgPreview.style.display = 'none';
-            vidPreview.style.display = 'none';
-            placeholder.style.display = 'none';
-
-            if (file.type.startsWith('image/')) {
-                imgPreview.src = URL.createObjectURL(file);
-                imgPreview.style.display = 'block';
-            } else if (file.type.startsWith('video/')) {
-                vidPreview.src = URL.createObjectURL(file);
-                vidPreview.style.display = 'block';
-            } else {
-                placeholder.style.display = 'block';
+        // مراقبة حالة الاتصال بـ Firebase
+        onValue(ref(db, '.info/connected'), (snap) => {
+            const dot = document.getElementById('connDot');
+            if (snap.val() === true) {
+                dot.classList.add('online');
+                document.getElementById('statusText').innerText = "ZIEDZIZOU LINK ACTIVE";
+                window.logToChat("متصل بنجاح بقاعدة بيانات Ziedzizou.");
             }
         });
 
-        // زر إرسال الرسائل النصية
-        document.getElementById('sendMsgBtn').onclick = () => {
-            const input = document.getElementById('msgInput');
-            if(input.value && window.injectTextMessage) {
-                window.injectTextMessage(input.value);
-                logToChat(`<span style="color:var(--neon-green)">بث نصي:</span> ${input.value}`);
-                input.value = "";
+        // استلام النبضات من Firebase (بديل للسوكيت)
+        onValue(pulseRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data && window.processIncomingPulse) {
+                window.processIncomingPulse(data); // دالة سنعرفها في Zied.js
             }
+        });
+
+        // اختيار الملف والمعاينة
+        document.getElementById('fileInput').onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('sendBtn').disabled = false;
+            window.logToChat(`تم تحميل: ${file.name}`);
         };
     </script>
 
