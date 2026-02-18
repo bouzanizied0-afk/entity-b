@@ -1,202 +1,178 @@
-import { io } from "https://cdn.socket.io/4.7.4/socket.io.esm.min.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, update, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-/** * [1. الحالة العالمية الموحدة]
- * تم تجميع المتغيرات لضمان نطاق (Scope) نظيف ومنع التداخل
- */
-const socket = window.socket || io("http://localhost:8080"); // تأكيد الاتصال بالسيرفر
-let fileBuffer = null;
-let lastSessionID = null;
-let virtualClock = 0;
-let currentGlobalSeed = 0;
+const firebaseConfig = {
+    apiKey: "AIzaSyD4XkZaqv7_c-uiUFc2NvZEFyQUapirz-Y",
+    authDomain: "setouchi-it.firebaseapp.com",
+    databaseURL: "https://setouchi-it-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "setouchi-it"
+};
 
-/**
- * [2. النبض الزمكاني]
- * الحفاظ على المعادلة الرياضية الأصلية كما هي دون تغيير
- */
-function getSpatioTemporalByte(tick, seed) {
-    const compositeWave = (
-        Math.sin(tick * 0.05 + seed) + 
-        Math.cos(tick * 0.03 + seed * 1.5) + 
-        Math.sin(tick * 0.01 + seed * 2.2)
-    );
-    return Math.floor(((compositeWave / 3) + 1) * 127.5);
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const inputPath = 'QUP_FullColor_V1';
+const outputPath = 'QUP_Termux_Stream';
+const canvas = document.getElementById('matrixCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+// إضافة عنصر واجهة لعرض النسبة المئوية (تأكد من وجود عنصر بهذا ID في HTML أو سأضيفه برمجياً)
+let progressDisplay = document.getElementById('progressStatus');
+if (!progressDisplay) {
+    progressDisplay = document.createElement('div');
+    progressDisplay.id = 'progressStatus';
+    progressDisplay.style = "color: #0f0; font-family: monospace; margin: 10px 0;";
+    document.body.insertBefore(progressDisplay, canvas);
 }
 
-/**
- * دالة حساب النبضات لضمان مزامنة الساعة
- */
-function countPulses(packet) {
-    let pulseCount = 0;
-    let i = 0;
-    while (i < packet.length) {
-        const char = packet[i];
-        if (char === 'S') { 
-            let end = packet.indexOf('.', i); 
-            pulseCount += parseInt(packet.substring(i + 1, end)); 
-            i = end + 1; 
-        }
-        else if (char === 'B' || char === 'M') { pulseCount += 1; i += 2; }
-        else if (char === 'X') { pulseCount += 1; i += 4; }
-        else { i++; }
-    }
-    return pulseCount;
-}
-
-/**
- * [3. المعمار الباني: وظيفة الـ Render]
- */
-function render(clk, step, seed, byteValue) {
-    const offset = clk * step;
-    if (!fileBuffer || offset >= fileBuffer.length) return;
-
-    if (byteValue === -1) {
-        fileBuffer[offset] = getSpatioTemporalByte(clk, seed);
-    } else {
-        fileBuffer[offset] = byteValue;
-    }
-
-    if (clk % 1000 === 0) {
-        updateProgressPulse(offset / fileBuffer.length);
-    }
-}
-
-/**
- * [4. بوابة الدخول: مستقبل الملفات والرسائل]
- */
-const fileInput = document.getElementById('fileInput');
-if (fileInput) {
-    fileInput.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const arrayBuffer = await file.arrayBuffer();
-        const rawData = new Uint8Array(arrayBuffer);
-        const sessionID = Date.now();
-        currentGlobalSeed = Math.random(); 
-
-        console.log(`📡 استيعاب ملف: ${file.name} | الحجم: ${rawData.length}`);
-
-        socket.emit('qup_stream_init', { 
-            name: file.name, total: rawData.length, sid: sessionID, seed: currentGlobalSeed 
-        });
-
-        const sendBtn = document.getElementById('sendBtn');
-        if (sendBtn) {
-            sendBtn.disabled = false;
-            sendBtn.onclick = () => executeUniversalStream(rawData, currentGlobalSeed, sessionID);
-        }
+function getSpatioTemporalClock(tick) {
+    return {
+        r: Math.floor((Math.sin(tick * 0.05) + 1) * 127.5),
+        g: Math.floor((Math.cos(tick * 0.03) + 1) * 127.5),
+        b: Math.floor((Math.sin(tick * 0.01) + 1) * 127.5)
     };
 }
 
-window.injectTextMessage = (text) => {
-    const encoder = new TextEncoder();
-    const textData = encoder.encode(text);
-    executeUniversalStream(textData, Math.random(), Date.now());
-};
-
-/**
- * [5. المحلل الطبقي: محرك بث البايتات]
- * تم إصلاح إغلاق الأقواس وضمان إرسال آخر نبضة لكل طبقة
- */
-async function executeUniversalStream(rawData, seed, sid) {
+// 1. الإرسال الاحترافي مع نظام التصفير والنسبة المئوية
+document.getElementById('sendBtn').onclick = async () => {
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const layers = [8, 4, 2, 1];
-    const threshold = 5;
+    const threshold = 10;
+    const sessionID = Date.now(); // تعريف جلسة فريدة لمنع تداخل البيانات القديمة
+
+    progressDisplay.innerText = "🚀 جاري تنظيف المسارات وبدء الإرسال...";
+    
+    // تصفير شامل للمدخلات والمخرجات قبل البدء لمنع التداخل
+    await remove(ref(db, inputPath));
+    await remove(ref(db, outputPath));
 
     for (let step of layers) {
         let packet = "";
         let skipCount = 0;
         let clock = 0;
+        const totalPixels = (canvas.width / step) * (canvas.height / step);
 
-        for (let i = 0; i < rawData.length; i += step) {
-            const actualByte = rawData[i];
-            const predictedByte = getSpatioTemporalByte(clock, seed);
-            const isMatch = Math.abs(actualByte - predictedByte) < threshold;
+        for (let y = 0; y < canvas.height; y += step) {
+            for (let x = 0; x < canvas.width; x += step) {
+                const idx = (y * canvas.width + x) * 4;
+                const r = pixels[idx], g = pixels[idx+1], b = pixels[idx+2];
+                
+                const pred = getSpatioTemporalClock(clock);
+                const isMatch = Math.abs(r - pred.r) < threshold && Math.abs(g - pred.g) < threshold;
 
-            if (isMatch) {
-                skipCount++;
-            } else {
-                if (skipCount > 0) { 
-                    packet += "S" + skipCount + "."; 
-                    skipCount = 0; 
+                if (isMatch) {
+                    skipCount++;
+                } else {
+                    if (skipCount > 0) { packet += "S" + skipCount + "."; skipCount = 0; }
+                    packet += "X" + String.fromCharCode(0x4E00 + r) + 
+                                   String.fromCharCode(0x5E00 + g) + 
+                                   String.fromCharCode(0x6E00 + b);
                 }
-                packet += "B" + String.fromCharCode(0x4E00 + actualByte);
-            }
-            clock++;
+                clock++;
 
-            if (packet.length > 8000) {
-                if (skipCount > 0) { 
-                    packet += "S" + skipCount + "."; 
-                    skipCount = 0; 
+                if (packet.length > 6000) {
+                    if (skipCount > 0) { packet += "S" + skipCount + "."; skipCount = 0; }
+                    await update(ref(db, inputPath), { 
+                        d: packet, step, c: clock, w: canvas.width, h: canvas.height, sid: sessionID 
+                    });
+                    
+                    // تحديث النسبة المئوية
+                    const percent = Math.floor((clock / totalPixels) * 100);
+                    progressDisplay.innerText = `📡 طبقة [${step}]: ${percent}%`;
+                    
+                    packet = "";
+                    await new Promise(res => setTimeout(res, 2)); // تقليل التأخير لزيادة السرعة
                 }
-                socket.emit('qup_stream', { d: packet, step, c: clock, total: rawData.length, sid: sid, seed: seed });
-                packet = "";
-                await new Promise(res => setTimeout(res, 0));
             }
-        } 
-
-        // إرسال النبضات المتبقية في نهاية الطبقة
+        }
         if (packet || skipCount > 0) {
             if (skipCount > 0) packet += "S" + skipCount + ".";
-            socket.emit('qup_stream', { 
-                d: packet, 
-                step: step, 
-                c: clock, 
-                total: rawData.length, 
-                sid: sid, 
-                seed: seed 
-            });
+            await update(ref(db, inputPath), { d: packet, step, c: clock, w: canvas.width, h: canvas.height, sid: sessionID });
         }
     }
-}
+    progressDisplay.innerText = "✅ اكتمل الإرسال بنجاح";
+};
 
-/**
- * [6. المترجم الشامل: استقبال وإعادة بناء المادة]
- * تم دمج نسختي الدالة في دالة واحدة فريدة ومنظمة
- */
-socket.on('qup_stream', (data) => {
+// 2. الاستقبال الذكي مع نظام تصفير الشاشة الذاتي
+let lastSessionID = null;
+
+onValue(ref(db, outputPath), (snap) => {
+    const data = snap.val();
     if (!data || !data.d) return;
 
-    // تهيئة الجلسة وتخصيص الذاكرة
-    if (data.sid !== lastSessionID) {
-        fileBuffer = new Uint8Array(data.total);
+    // إذا تغيرت الجلسة (صورة جديدة) أو تغير الحجم، امسح الكانفاس فوراً
+    if (data.sid !== lastSessionID || canvas.width !== data.w) {
+        canvas.width = data.w; 
+        canvas.height = data.h;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         lastSessionID = data.sid;
-        virtualClock = 0;
-        console.log("🌀 تم مزامنة الجلسة الجديدة عبر السيرفر.");
     }
 
     const raw = data.d;
     const step = data.step;
-    let currentTick = data.c - countPulses(raw); 
+    const w = data.w;
+    let clk = data.c - countPixels(raw);
     let i = 0;
 
     while (i < raw.length) {
         if (raw[i] === "S") {
             let end = raw.indexOf(".", i);
-            if (end === -1) break;
             let count = parseInt(raw.substring(i + 1, end));
-            for (let s = 0; s < count; s++) {
-                render(currentTick + s, step, data.seed, -1);
-            }
-            currentTick += count;
+            for (let s = 0; s < count; s++) { render(clk, step, w, -1); clk++; }
             i = end + 1;
-        } 
-        else if (raw[i] === "B") {
-            const byteValue = raw.charCodeAt(i + 1) - 0x4E00;
-            render(currentTick, step, data.seed, byteValue);
-            currentTick++;
-            i += 2;
-        } 
-        else {
-            i++;
-        }
+        } else if (raw[i] === "X") {
+            const r = raw.charCodeAt(i + 1) - 0x4E00;
+            const g = raw.charCodeAt(i + 2) - 0x5E00;
+            const b = raw.charCodeAt(i + 3) - 0x6E00;
+            render(clk, step, w, r, g, b);
+            clk++;
+            i += 4;
+        } else i++;
     }
-    virtualClock = currentTick;
 });
 
-/**
- * [7. دوال مساعدة للواجهة]
- * تم وضع هياكل فارغة لمنع الخطأ في الكونسول (ReferenceError)
- */
-function updateProgressPulse(ratio) { 
-    // يتم كتابة منطق التحديث هنا
+function render(clk, step, w, r, g = 0, b = 0) {
+    const pixelsPerRow = Math.ceil(w / step);
+    const x = (clk % pixelsPerRow) * step;
+    const y = Math.floor(clk / pixelsPerRow) * step;
+    
+    let finalR, finalG, finalB;
+    if (r === -1) {
+        const pred = getSpatioTemporalClock(clk);
+        finalR = pred.r; finalG = pred.g; finalB = pred.b;
+    } else {
+        finalR = r; finalG = g; finalB = b;
+    }
+
+    ctx.fillStyle = `rgb(${finalR},${finalG},${finalB})`;
+    // منطق الحجم الاحترافي لمنع التداخل والخطوط السوداء
+    const size = (step === 1) ? 1 : step + 0.6; 
+    ctx.fillRect(x, y, size, size);
 }
+
+function countPixels(p) {
+    let total = 0, i = 0;
+    while(i < p.length) {
+        if(p[i] === 'S') { 
+            let end = p.indexOf('.', i); 
+            total += parseInt(p.substring(i+1, end)); 
+            i = end + 1; 
+        }
+        else if(p[i] === 'X') { total += 1; i += 4; }
+        else i++;
+    }
+    return total;
+}
+
+document.getElementById('fileInput').onchange = (e) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width; canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            document.getElementById('sendBtn').disabled = false;
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(e.target.files[0]);
+};
