@@ -54,30 +54,24 @@ const SYMBOLS = {
 // ============================================================
 const DELTA = {
     extract: (pixels, bgR, bgG, bgB) => {
-        let payload = "";
-        let count = 0;
-        let lastColor = "";
-
-        for (let i = 0; i < pixels.length; i += 4) {
-            const r = pixels[i], g = pixels[i+1], b = pixels[i+2], a = pixels[i+3];
-            
-            // تجاهل الشفافية أو البكسلات المطابقة تماماً للخلفية
-            if (a > 10 && (r !== bgR || g !== bgG || b !== bgB)) {
-                const currentColor = SYMBOLS.encodeColor(r, g, b);
-                const currentPos = SYMBOLS.encodePos(i/4);
-
-                if (currentColor === lastColor) {
-                    // رمز "الصاروخ" 0xF000 يعني: نفس اللون السابق للبكسل الحالي
-                    payload += currentPos + String.fromCodePoint(0xF000);
-                } else {
-                    payload += currentPos + currentColor;
-                    lastColor = currentColor;
-                }
-                count++;
+    let payload = "";
+    let lastColor = "";
+    // القفزة بـ 8 (أي بكسل وبكسل) تجعل الإرسال فورياً كالبرق
+    for (let i = 0; i < pixels.length; i += 8) { 
+        const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+        if (r !== bgR || g !== bgG || b !== bgB) {
+            const currentColor = SYMBOLS.encodeColor(r, g, b);
+            const currentPos = SYMBOLS.encodePos(i/4);
+            if (currentColor === lastColor) {
+                payload += currentPos + String.fromCodePoint(0xF000);
+            } else {
+                payload += currentPos + currentColor;
+                lastColor = currentColor;
             }
         }
-        return { payload, count };
     }
+    return { payload };
+}
 };
 
 // ============================================================
