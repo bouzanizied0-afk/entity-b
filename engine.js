@@ -108,26 +108,22 @@ document.getElementById('fileIn').onchange = (e) => {
 };
 
 // _________________________________________________________________
-// [الجزء الرابع]: وحدة الاستقبال الآلي (The Auto-Sync Receiver)
+// [الجزء الرابع المطور]: وحدة الاستقبال الآلي والتحقق الفوري
 // _________________________________________________________________
 
-let isRendering = false; // حارس النبضات لمنع تداخل العمليات
+let isRendering = false;
 
-onValue(engineRef, (snap) => {
+// دالة المعالجة المركزية (فصلناها لنستدعيها في أي وقت)
+const processPulse = (snap) => {
     const d = snap.val();
     if (!d || !d.data || isRendering) return;
 
-    isRendering = true; // إغلاق البوابة لبدء المعالجة الرسمية
-
-    // استخدام requestAnimationFrame لضمان أعلى أداء رسم ممكن
+    isRendering = true;
     requestAnimationFrame(() => {
-        const start = performance.now();
-        
-        // مزامنة الأبعاد تلقائياً مع المرسل
+        // مزامنة الأبعاد
         if (dC.width !== d.w) {
             dC.width = d.w; 
             dC.height = d.h;
-            dCtx.imageSmoothingEnabled = false;
         }
 
         const imgData = dCtx.createImageData(d.w, d.h);
@@ -135,24 +131,33 @@ onValue(engineRef, (snap) => {
         const stream = d.data;
         
         let pIdx = 0;
-        // إعادة بناء الصورة بفك التشفير الرمزي (الترتيب الخطي)
         for (let i = 0; i < stream.length; i += 3) {
             const c = V1_CORE.decode(stream, i);
-            p[pIdx] = c.r;
-            p[pIdx+1] = c.g;
-            p[pIdx+2] = c.b;
-            p[pIdx+3] = 255; // تعتيم كامل (لا شفافية لضمان الحدة)
+            p[pIdx] = c.r; p[pIdx+1] = c.g; p[pIdx+2] = c.b;
+            p[pIdx+3] = 255;
             pIdx += 4;
         }
-
-        // التفريغ المباشر في ذاكرة الكانفاس
         dCtx.putImageData(imgData, 0, 0);
-        
-        const end = performance.now();
-        msg.innerText = `📡 نبضة حية: تم الاستقبال والمعالجة في ${(end - start).toFixed(2)}ms`;
-        
-        isRendering = false; // فتح البوابة لاستقبال النبضة التالية
+        isRendering = false;
+        msg.innerText = "📡 المزامنة مكتملة: الصورة قيد العرض";
     });
+};
+
+// 1. الاستماع للتغييرات الحية (كما كان سابقاً)
+onValue(engineRef, (snap) => {
+    processPulse(snap);
 });
+
+// 2. [الإضافة الجديدة]: إجبار المحرك على قراءة البيانات فور فتح المتصفح
+import { get, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+const dbRef = ref(getDatabase());
+get(child(dbRef, 'INSTANT_STREAM')).then((snapshot) => {
+    if (snapshot.exists()) {
+        console.log("تم العثور على نبضة سابقة، جاري المزامنة...");
+        processPulse(snapshot);
+    }
+});
+
 
 
